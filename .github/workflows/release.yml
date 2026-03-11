@@ -1,0 +1,108 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Compute new version
+        id: version
+        run: |
+          current=$(grep -E '^version=' palette_pilot/metadata.txt | cut -d= -f2)
+          if [ -z "$current" ]; then
+            echo "::error::Could not read version from palette_pilot/metadata.txt"
+            exit 1
+          fi
+          IFS='.' read -r major minor patch <<< "$current"
+
+          case "${{ github.event.inputs.bump }}" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+          esac
+
+          new_version="${major}.${minor}.${patch}"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "new=$new_version" >> "$GITHUB_OUTPUT"
+          echo "tag=v${new_version}" >> "$GITHUB_OUTPUT"
+          echo "Bumping ${{ github.event.inputs.bump }}: $current -> $new_version"
+
+      - name: Update version in metadata.txt
+        run: |
+          sed -i "s/^version=.*/version=${{ steps.version.outputs.new }}/" palette_pilot/metadata.txt
+          updated=$(grep -E '^version=' palette_pilot/metadata.txt | cut -d= -f2)
+          if [ "$updated" != "${{ steps.version.outputs.new }}" ]; then
+            echo "::error::Failed to update version in metadata.txt (expected ${{ steps.version.outputs.new }}, got $updated)"
+            exit 1
+          fi
+          echo "Updated metadata.txt: version=$updated"
+
+      - name: Create release ZIP
+        run: |
+          python3 scripts/create_release_zip.py -o "palette_pilot_${{ steps.version.outputs.tag }}.zip"
+          if [ ! -f "palette_pilot_${{ steps.version.outputs.tag }}.zip" ]; then
+            echo "::error::Release ZIP was not created"
+            exit 1
+          fi
+
+      - name: Commit version bump and create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add palette_pilot/metadata.txt
+          git commit -m "Bump version to ${{ steps.version.outputs.new }}"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin HEAD "${{ steps.version.outputs.tag }}"
+
+      - name: Create draft GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Palette Pilot ${{ steps.version.outputs.tag }}
+          draft: true
+          generate_release_notes: true
+          files: palette_pilot_${{ steps.version.outputs.tag }}.zip
+          body: |
+            ## Palette Pilot ${{ steps.version.outputs.tag }}
+
+            ### Installation
+
+            1. Download **palette_pilot_${{ steps.version.outputs.tag }}.zip** from the assets below.
+            2. In QGIS go to **Plugins → Manage and Install Plugins → Install from ZIP**.
+            3. Select the downloaded file and click **Install Plugin**.

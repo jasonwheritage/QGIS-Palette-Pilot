@@ -1,0 +1,35 @@
+[project]
+name = "colour-exploration"
+version = "0.1.0"
+description = "Dev tooling for Palette Pilot QGIS plugin (plugin runs inside QGIS)"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = [
+    "pylint>=3.0.0",
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+]
+
+[tool.black]
+target-version = ["py310"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.eggs
+  | \.git
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.pylint.main]
+ignore = [".venv"]
+jobs = 0
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]

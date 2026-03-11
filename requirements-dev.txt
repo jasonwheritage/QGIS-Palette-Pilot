@@ -1,0 +1,5 @@
+# Dev dependencies for Palette Pilot (uv or pip)
+# Use: uv sync  OR  pip install -r requirements-dev.txt
+pylint>=3.0.0
+pytest>=7.0.0
+black>=23.0.0

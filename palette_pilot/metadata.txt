@@ -1,0 +1,19 @@
+[general]
+name=Palette Pilot
+email=42364494+jasonwheritage@users.noreply.github.com
+author=Jason Heritage & Cursor
+qgisMinimumVersion=3.28
+qgisMaximumVersion=3.99
+description=Style vector layers in a snap — ramps, saved colours, and full layer styles (point, line, polygon).
+about=Apply built-in or saved colour ramps to graduated/categorized layers, save single-symbol colours, and save/load full layer styles by geometry type. Copy path and open style folder. Styles stay in QGIS.
+version=1.0.0
+tracker=https://github.com/jasonwheritage/QGIS-Palette-Pilot/issues
+repository=https://github.com/jasonwheritage/QGIS-Palette-Pilot
+homepage=https://github.com/jasonwheritage/QGIS-Palette-Pilot
+license=GPL-2.0-or-later
+icon=icon.png
+category=Vector
+tags=colour,color,palette,ramp,pilot,symbology,graduated,categorized,style,vector,layer
+
+experimental=False
+deprecated=False
