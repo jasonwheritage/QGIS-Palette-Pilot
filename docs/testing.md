@@ -28,6 +28,20 @@ Run from the repo root:
 uv run python -m unittest tests.test_qt_compat -v
 ```
 
+### Theme engine tests
+
+The `theme_engine` module has unit tests in `tests/test_theme_engine.py`. These mock QGIS APIs and exercise theme CRUD (save/load/list/delete), style discovery, regex matching with geometry type enforcement, and theme application — no QGIS installation required.
+
+```bash
+uv run python -m unittest tests.test_theme_engine -v
+```
+
+### Run all tests at once
+
+```bash
+uv run python -m unittest discover tests -v
+```
+
 Or without uv:
 
 ```bash
