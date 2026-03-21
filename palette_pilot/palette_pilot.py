@@ -8,8 +8,13 @@ import os
 
 from qgis.PyQt.QtCore import QCoreApplication, QSize
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction
 from qgis.core import QgsStyle
+
+# QAction moved from QtWidgets to QtGui in Qt6
+try:
+    from qgis.PyQt.QtGui import QAction
+except ImportError:
+    from qgis.PyQt.QtWidgets import QAction
 from qgis.gui import QgisInterface
 
 # Default ramp name for the M2 stub (must exist in QgsStyle default ramps)

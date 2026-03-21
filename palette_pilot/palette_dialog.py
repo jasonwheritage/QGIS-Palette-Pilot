@@ -20,10 +20,15 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QMessageBox,
     QGroupBox,
-    QShortcut,
     QCheckBox,
     QInputDialog,
 )
+
+# QShortcut moved from QtWidgets to QtGui in Qt6
+try:
+    from qgis.PyQt.QtGui import QShortcut
+except ImportError:
+    from qgis.PyQt.QtWidgets import QShortcut
 from qgis.core import (
     QgsStyle,
     QgsSettings,
@@ -31,8 +36,18 @@ from qgis.core import (
     Qgis,
     QgsSingleSymbolRenderer,
     QgsApplication,
-    QgsWkbTypes,
 )
+
+# QgsWkbTypes geometry constants deprecated in QGIS 3.30+; use Qgis.GeometryType
+try:
+    _PointGeometry = Qgis.GeometryType.Point
+    _LineGeometry = Qgis.GeometryType.Line
+    _PolygonGeometry = Qgis.GeometryType.Polygon
+except AttributeError:
+    from qgis.core import QgsWkbTypes
+    _PointGeometry = QgsWkbTypes.PointGeometry
+    _LineGeometry = QgsWkbTypes.LineGeometry
+    _PolygonGeometry = QgsWkbTypes.PolygonGeometry
 from qgis.gui import QgisInterface, QgsColorButton, QgsColorRampButton
 
 # Key for persisting list of ramp names saved via "Save current as…" (plugin-owned; persists between sessions)
@@ -63,11 +78,11 @@ def _geometry_type_folder(layer):
         geom_type = layer.geometryType()
     except Exception:
         return "other"
-    if geom_type == QgsWkbTypes.PointGeometry:
+    if geom_type == _PointGeometry:
         return "point"
-    if geom_type == QgsWkbTypes.LineGeometry:
+    if geom_type == _LineGeometry:
         return "line"
-    if geom_type == QgsWkbTypes.PolygonGeometry:
+    if geom_type == _PolygonGeometry:
         return "polygon"
     return "other"
 
