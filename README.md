@@ -7,7 +7,7 @@ A **QGIS plugin** to style vector layers in a snap: colour ramps, saved colours,
 
 ## Installation
 
-Palette Pilot runs in [QGIS](https://qgis.org/) 3.28 or later. One flow for every OS:
+Palette Pilot runs in [QGIS](https://qgis.org/) 3.28 or later (including Qt6 builds and QGIS 4.x). One flow for every OS:
 
 1. **Install the plugin** (pick one):
   - **From ZIP (easiest):** In QGIS go to **Plugins → Manage and Install Plugins → Install from ZIP**, choose a release zip that contains the `palette_pilot` folder at the top level.
@@ -44,7 +44,7 @@ Changing layer colours in QGIS usually means opening **Layer Properties → Symb
 
 Palette Pilot is designed to stay small and reliable by relying on QGIS’s own functionality instead of reimplementing it:
 
-- **No extra dependencies** — The plugin uses only PyQGIS and Qt, which QGIS already provides. There is no separate server, database, or external service.
+- **No extra dependencies** — The plugin uses only PyQGIS and Qt, which QGIS already provides. There is no separate server, database, or external service. A built-in compatibility shim (`qt_compat.py`) handles Qt5/Qt6 and QGIS 3/4 API differences automatically.
 - **QGIS owns the data** — Colour ramps come from QGIS’s built-in style (and your saved ramps in the style manager). Saved colours and full layer styles (.qml) are stored where QGIS normally keeps them. The plugin does not duplicate style data in its own config, so what you see in Layer Properties or the Style Manager is the same as what Palette Pilot uses.
 - **Thin layer over existing symbology** — The plugin does not create or manage classification (fields, class breaks, or categories). It only applies a chosen ramp or colour to layers that already use single-symbol, graduated, or categorized renderers. You set up the renderer and field in Layer Properties; Palette Pilot is a fast way to try different palettes on that setup.
 - **Fits the QGIS model** — Applied styles become part of your layer and project. Saving the project, exporting a layer style, or sharing a .qml file works as usual; the plugin does not add its own file format or sync layer.

@@ -11,7 +11,7 @@ See [PLAN.md](../PLAN.md) for full context. This document summarises the archite
 - **Style ownership:** Applied palettes become part of the layer’s style and project; persistence and sharing are handled by QGIS (layer style, project, style manager). The plugin avoids duplicating style data in its own storage.
 
 - **Dependencies:** The plugin depends on a specific QGIS/PyQGIS version (e.g. 3.44) for API stability. It does not ship a separate Python or Qt; it uses what QGIS provides.
-
+- **Qt5/Qt6 and QGIS 3/4 compatibility:** The plugin uses a `qt_compat` shim module (`palette_pilot/qt_compat.py`) that resolves enum constants at import time for both Qt5 (unscoped enums like `Qt.NoFocus`) and Qt6 (scoped enums like `Qt.FocusPolicy.NoFocus`), as well as QGIS 3 APIs (`QgsWkbTypes`, `Qgis.Info`, `QgsMapLayer.VectorLayer`) and their QGIS 4 equivalents (`Qgis.GeometryType`, `Qgis.MessageLevel`, `Qgis.LayerType`). Plugin code imports constants from `qt_compat` instead of using Qt/QGIS enums directly, avoiding scattered `try/except` blocks.
 - **Scope of logic:** Palette “application” is a thin adapter: map user choice (ramp or colour list) onto existing graduated/categorized renderer structures. Classification method and class breaks are left to QGIS; the plugin only changes colours.
 
 ## Strengths
@@ -26,7 +26,7 @@ See [PLAN.md](../PLAN.md) for full context. This document summarises the archite
 
 ## Weaknesses
 
-- **Tied to QGIS and PyQGIS version:** API changes or removals in newer QGIS can break the plugin; version compatibility must be tracked and tested.
+- **Tied to QGIS and PyQGIS version:** API changes or removals in newer QGIS can break the plugin; version compatibility must be tracked and tested. The `qt_compat` shim mitigates this for known Qt5→Qt6 and QGIS 3→4 enum changes, but new API removals may still require updates.
 
 - **Debugging and testing:** Full execution is inside QGIS; debugging requires attaching to the QGIS process or using the Python Console. Automated integration tests need a QGIS environment (e.g. headless or test runner that loads QGIS).
 
@@ -36,7 +36,7 @@ See [PLAN.md](../PLAN.md) for full context. This document summarises the archite
 
 ## Future recommendations
 
-- **Compatibility and metadata:** Publish a compatibility matrix (e.g. plugin version ↔ QGIS 3.28 LTR, 3.34, 3.44) and set `qgisMinimumVersion` / `qgisMaximumVersion` in `metadata.txt` so users get clear install constraints.
+- **Compatibility and metadata:** Publish a compatibility matrix (e.g. plugin version ↔ QGIS 3.28 LTR, 3.34, 3.44, 4.x) and set `qgisMinimumVersion` / `qgisMaximumVersion` in `metadata.txt` so users get clear install constraints. When new Qt or QGIS enum changes appear, add resolution entries to `qt_compat.py`.
 
 - **Extend renderer/layer support only if needed:** Consider raster or other vector renderers only if there is user demand and a clear path with `QgsStyle` / existing APIs; avoid scope creep.
 

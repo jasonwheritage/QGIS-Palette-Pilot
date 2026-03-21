@@ -16,9 +16,27 @@ How to test Palette Pilot manually and (if present) with automated tests.
    - Layer with a different renderer (e.g. single symbol) → expect a message that only graduated/categorized are supported.
    - Layer with many classes → confirm rendering and performance are acceptable.
 
-## Automated tests (if added)
+## Automated tests
 
-- **Unit tests** for pure logic (e.g. building a ramp from a colour list, mapping ramp to category list) run in the **project venv** with `pytest`. They do not require QGIS.
+### Qt/QGIS compatibility tests
+
+The `qt_compat` module has dedicated unit tests in `tests/test_qt_compat.py`. These mock both Qt5/QGIS 3 and Qt6/QGIS 4 environments to verify that all enum constants resolve correctly on both platforms — no QGIS installation required.
+
+Run from the repo root:
+
+```bash
+uv run python -m unittest tests.test_qt_compat -v
+```
+
+Or without uv:
+
+```bash
+python3 -m unittest tests.test_qt_compat -v
+```
+
+### Other unit tests
+
+- **Unit tests** for pure logic (e.g. building a ramp from a colour list, mapping ramp to category list) run in the **project venv**. They do not require QGIS.
 - **Integration tests** that need PyQGIS (e.g. applying a ramp to a mock or real layer) require running under QGIS’s Python (e.g. `qgis_testrunner.py` or a small runner that loads QGIS then runs tests). Document the exact command (e.g. in this file or in README) so others can run them.
 
 ## Regression

@@ -58,7 +58,8 @@ From the project root with the venv activated:
 
 - Lint: `pylint palette_pilot` (or `ruff check palette_pilot` if using Ruff).
 - Format: `black palette_pilot` (or `ruff format palette_pilot`).
-- Tests: `pytest` (for any unit tests in the repo).
+- Tests: `uv run python -m unittest discover tests -v` (or `python3 -m unittest discover tests -v`).
+  - `test_qt_compat.py` — verifies the Qt5/Qt6 and QGIS 3/4 compatibility shim (`qt_compat.py`) resolves all enum constants correctly under both mock environments. No QGIS installation needed.
 
 Fix issues before committing.
 

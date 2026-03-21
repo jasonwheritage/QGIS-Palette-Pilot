@@ -28,12 +28,12 @@ from qgis.core import (
     QgsStyle,
     QgsSettings,
     QgsMessageLog,
-    Qgis,
     QgsSingleSymbolRenderer,
     QgsApplication,
-    QgsWkbTypes,
 )
 from qgis.gui import QgisInterface, QgsColorButton, QgsColorRampButton
+
+from . import qt_compat
 
 # Key for persisting list of ramp names saved via "Save current as…" (plugin-owned; persists between sessions)
 _SAVED_STYLES_KEY = "palette_pilot/saved_style_names"
@@ -57,17 +57,17 @@ def _get_full_style_directory():
 
 def _geometry_type_folder(layer):
     """Return subfolder name for the layer's geometry type: point, line, polygon, or other."""
-    if not layer or layer.type() != layer.VectorLayer:
+    if not layer or layer.type() != qt_compat.VectorLayerType:
         return "other"
     try:
         geom_type = layer.geometryType()
     except Exception:
         return "other"
-    if geom_type == QgsWkbTypes.PointGeometry:
+    if geom_type == qt_compat.PointGeometry:
         return "point"
-    if geom_type == QgsWkbTypes.LineGeometry:
+    if geom_type == qt_compat.LineGeometry:
         return "line"
-    if geom_type == QgsWkbTypes.PolygonGeometry:
+    if geom_type == qt_compat.PolygonGeometry:
         return "polygon"
     return "other"
 
@@ -221,15 +221,15 @@ class PaletteToolDialog(QDialog):
         self._refresh_timer.setInterval(1500)
         # Window-level shortcuts: Enter = Apply, Escape = Close (work even when combo has focus;
         # keyPressEvent never sees Enter because the focused combo consumes it)
-        self._shortcut_apply_return = QShortcut(QKeySequence(Qt.Key_Return), self)
+        self._shortcut_apply_return = QShortcut(QKeySequence(qt_compat.Key_Return), self)
         self._shortcut_apply_return.activated.connect(self._on_apply)
-        self._shortcut_apply_return.setContext(Qt.WindowShortcut)
-        self._shortcut_apply_enter = QShortcut(QKeySequence(Qt.Key_Enter), self)
+        self._shortcut_apply_return.setContext(qt_compat.WindowShortcut)
+        self._shortcut_apply_enter = QShortcut(QKeySequence(qt_compat.Key_Enter), self)
         self._shortcut_apply_enter.activated.connect(self._on_apply)
-        self._shortcut_apply_enter.setContext(Qt.WindowShortcut)
-        self._shortcut_close = QShortcut(QKeySequence(Qt.Key_Escape), self)
+        self._shortcut_apply_enter.setContext(qt_compat.WindowShortcut)
+        self._shortcut_close = QShortcut(QKeySequence(qt_compat.Key_Escape), self)
         self._shortcut_close.activated.connect(self.close)
-        self._shortcut_close.setContext(Qt.WindowShortcut)
+        self._shortcut_close.setContext(qt_compat.WindowShortcut)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -238,7 +238,7 @@ class PaletteToolDialog(QDialog):
         self._populate_saved_colours()
         self._populate_full_styles()
         self._refresh_timer.start()
-        self.ramp_combo.setFocus(Qt.OtherFocusReason)
+        self.ramp_combo.setFocus(qt_compat.OtherFocusReason)
 
     def hideEvent(self, event):
         self._refresh_timer.stop()
@@ -347,7 +347,7 @@ class PaletteToolDialog(QDialog):
         """)
         self.close_btn = QPushButton("Close")
         self.close_btn.clicked.connect(self.accept)
-        self.close_btn.setFocusPolicy(Qt.NoFocus)
+        self.close_btn.setFocusPolicy(qt_compat.NoFocus)
         btn_layout.addWidget(self.apply_btn)
         btn_layout.addWidget(self.close_btn)
         layout.addLayout(btn_layout)
@@ -413,7 +413,7 @@ class PaletteToolDialog(QDialog):
             self._last_renderer_single = False
             self._last_full_style_geom_type = None
             return
-        if layer.type() != layer.VectorLayer:
+        if layer.type() != qt_compat.VectorLayerType:
             self.target_label.setText(f"{layer.name()} (not vector)")
             self._ramp_group.setEnabled(False)
             self._colour_group.setEnabled(False)
@@ -475,7 +475,7 @@ class PaletteToolDialog(QDialog):
         if self._suppress_ramp_auto_apply:
             return
         layer = self.iface.activeLayer()
-        if not layer or layer.type() != layer.VectorLayer:
+        if not layer or layer.type() != qt_compat.VectorLayerType:
             return
         # Do not auto-apply for single-symbol layers (they use the colour picker)
         r = layer.renderer()
@@ -512,7 +512,7 @@ class PaletteToolDialog(QDialog):
         if not ramp:
             return
         layer = self.iface.activeLayer()
-        if not layer or layer.type() != layer.VectorLayer:
+        if not layer or layer.type() != qt_compat.VectorLayerType:
             return
         r = layer.renderer()
         if isinstance(r, QgsSingleSymbolRenderer):
@@ -584,7 +584,7 @@ class PaletteToolDialog(QDialog):
         self.iface.messageBar().pushMessage(
             "Palette Pilot",
             f'Saved "{name}" to Saved styles.',
-            level=Qgis.Info,
+            level=qt_compat.MessageInfo,
             duration=3,
         )
 
@@ -599,7 +599,7 @@ class PaletteToolDialog(QDialog):
         if ramp is None:
             return
         layer = self.iface.activeLayer()
-        if not layer or layer.type() != layer.VectorLayer:
+        if not layer or layer.type() != qt_compat.VectorLayerType:
             return
         r = layer.renderer()
         if isinstance(r, QgsSingleSymbolRenderer):
@@ -625,7 +625,7 @@ class PaletteToolDialog(QDialog):
             return
         if self.saved_colours_combo.currentIndex() == 0:
             return  # placeholder "—"
-        hex_str = self.saved_colours_combo.currentData(Qt.UserRole) or self.saved_colours_combo.currentText()
+        hex_str = self.saved_colours_combo.currentData(qt_compat.UserRole) or self.saved_colours_combo.currentText()
         if not hex_str or not isinstance(hex_str, str):
             hex_str = str(hex_str).strip() if hex_str else ""
         if not hex_str:
@@ -634,7 +634,7 @@ class PaletteToolDialog(QDialog):
         if not color.isValid():
             return
         layer = self.iface.activeLayer()
-        if not layer or layer.type() != layer.VectorLayer:
+        if not layer or layer.type() != qt_compat.VectorLayerType:
             return
         r = layer.renderer()
         if not isinstance(r, QgsSingleSymbolRenderer):
@@ -686,7 +686,7 @@ class PaletteToolDialog(QDialog):
         self._suppress_saved_colour_apply = True
         self._populate_saved_colours()
         self._suppress_saved_colour_apply = False
-        idx = self.saved_colours_combo.findData(hex_str, Qt.UserRole)
+        idx = self.saved_colours_combo.findData(hex_str, qt_compat.UserRole)
         if idx < 0:
             idx = self.saved_colours_combo.findText(display_name)
         if idx >= 0:
@@ -694,7 +694,7 @@ class PaletteToolDialog(QDialog):
         self.iface.messageBar().pushMessage(
             "Palette Pilot",
             "Saved colour to Saved colours.",
-            level=Qgis.Info,
+            level=qt_compat.MessageInfo,
             duration=3,
         )
 
@@ -704,11 +704,11 @@ class PaletteToolDialog(QDialog):
             return
         if self.full_style_combo.currentIndex() == 0:
             return  # placeholder "—"
-        path = self.full_style_combo.currentData(Qt.UserRole)
+        path = self.full_style_combo.currentData(qt_compat.UserRole)
         if not path or not isinstance(path, str) or not os.path.isfile(path):
             return
         layer = self.iface.activeLayer()
-        if not layer or layer.type() != layer.VectorLayer:
+        if not layer or layer.type() != qt_compat.VectorLayerType:
             return
         try:
             msg, ok = layer.loadNamedStyle(path)
@@ -716,7 +716,7 @@ class PaletteToolDialog(QDialog):
                 self.iface.messageBar().pushMessage(
                     "Palette Pilot",
                     msg or "Could not load style.",
-                    level=Qgis.Warning,
+                    level=qt_compat.MessageWarning,
                     duration=5,
                 )
                 return
@@ -734,21 +734,21 @@ class PaletteToolDialog(QDialog):
             self.iface.messageBar().pushMessage(
                 "Palette Pilot",
                 f'Loaded style onto "{layer.name()}".',
-                level=Qgis.Info,
+                level=qt_compat.MessageInfo,
                 duration=3,
             )
         except Exception as e:
             self.iface.messageBar().pushMessage(
                 "Palette Pilot",
                 str(e),
-                level=Qgis.Warning,
+                level=qt_compat.MessageWarning,
                 duration=5,
             )
 
     def _on_save_full_style_to_file(self):
         """Save the current layer's full style to a .qml file via a save-file dialog."""
         layer = self.iface.activeLayer()
-        if not layer or layer.type() != layer.VectorLayer:
+        if not layer or layer.type() != qt_compat.VectorLayerType:
             QMessageBox.warning(
                 self,
                 "Palette Pilot",
@@ -788,47 +788,47 @@ class PaletteToolDialog(QDialog):
         self._suppress_full_style_apply = True
         self._populate_full_styles()
         self._suppress_full_style_apply = False
-        idx = self.full_style_combo.findData(path, Qt.UserRole)
+        idx = self.full_style_combo.findData(path, qt_compat.UserRole)
         if idx >= 0:
             self.full_style_combo.setCurrentIndex(idx)
         self.iface.messageBar().pushMessage(
             "Palette Pilot",
             f'Saved style to {path}',
-            level=Qgis.Info,
+            level=qt_compat.MessageInfo,
             duration=5,
         )
 
     def _on_copy_style_path(self):
         """Copy the full-style save directory path to the clipboard (type-specific folder when a layer is active)."""
         layer = self.iface.activeLayer()
-        directory = _get_full_style_type_directory(layer) if layer and layer.type() == layer.VectorLayer else _get_full_style_directory()
+        directory = _get_full_style_type_directory(layer) if layer and layer.type() == qt_compat.VectorLayerType else _get_full_style_directory()
         clipboard = QApplication.clipboard()
         if clipboard is not None:
             clipboard.setText(directory)
             self.iface.messageBar().pushMessage(
                 "Palette Pilot",
                 "Path copied to clipboard.",
-                level=Qgis.Info,
+                level=qt_compat.MessageInfo,
                 duration=2,
             )
 
     def _on_open_style_location(self):
         """Open the full-style save directory in the system file manager (type-specific folder when a layer is active)."""
         layer = self.iface.activeLayer()
-        directory = _get_full_style_type_directory(layer) if layer and layer.type() == layer.VectorLayer else _get_full_style_directory()
+        directory = _get_full_style_type_directory(layer) if layer and layer.type() == qt_compat.VectorLayerType else _get_full_style_directory()
         url = QUrl.fromLocalFile(directory)
         if QDesktopServices.openUrl(url):
             self.iface.messageBar().pushMessage(
                 "Palette Pilot",
                 "Opened save location.",
-                level=Qgis.Info,
+                level=qt_compat.MessageInfo,
                 duration=2,
             )
         else:
             self.iface.messageBar().pushMessage(
                 "Palette Pilot",
                 "Could not open location. Use Copy path to open it manually.",
-                level=Qgis.Warning,
+                level=qt_compat.MessageWarning,
                 duration=4,
             )
 
@@ -838,7 +838,7 @@ class PaletteToolDialog(QDialog):
         This avoids needing a second Enter/Apply after closing the picker.
         """
         layer = self.iface.activeLayer()
-        if not layer or layer.type() != layer.VectorLayer:
+        if not layer or layer.type() != qt_compat.VectorLayerType:
             return
         r = layer.renderer()
         if not isinstance(r, QgsSingleSymbolRenderer):
@@ -862,13 +862,13 @@ class PaletteToolDialog(QDialog):
             self.iface.messageBar().pushMessage(
                 "Palette Pilot",
                 f'Applied single symbol colour to "{layer.name()}".',
-                level=Qgis.Info,
+                level=qt_compat.MessageInfo,
                 duration=3,
             )
             QgsMessageLog.logMessage(
                 f'Applied single symbol colour to "{layer.name()}".',
                 "Palette Pilot",
-                Qgis.Info,
+                qt_compat.MessageInfo,
             )
         except Exception:
             # Fall back silently; user can still click Apply if needed
@@ -887,7 +887,7 @@ class PaletteToolDialog(QDialog):
             )
             return
 
-        if layer.type() != layer.VectorLayer:
+        if layer.type() != qt_compat.VectorLayerType:
             QMessageBox.warning(
                 self,
                 "Palette Pilot",
@@ -918,13 +918,13 @@ class PaletteToolDialog(QDialog):
                 self.iface.messageBar().pushMessage(
                     "Palette Pilot",
                     f'Applied single symbol colour to "{layer.name()}".',
-                    level=Qgis.Info,
+                    level=qt_compat.MessageInfo,
                     duration=3,
                 )
                 QgsMessageLog.logMessage(
                     f'Applied single symbol colour to "{layer.name()}".',
                     "Palette Pilot",
-                    Qgis.Info,
+                    qt_compat.MessageInfo,
                 )
             except Exception:
                 QMessageBox.warning(
@@ -969,13 +969,13 @@ class PaletteToolDialog(QDialog):
             self.iface.messageBar().pushMessage(
                 "Palette Pilot",
                 f'Applied "{ramp_name}" to "{layer.name()}".',
-                level=Qgis.Info,
+                level=qt_compat.MessageInfo,
                 duration=3,
             )
             QgsMessageLog.logMessage(
                 f"Applied ramp '{ramp_name}' to \"{layer.name()}\".",
                 "Palette Pilot",
-                Qgis.Info,
+                qt_compat.MessageInfo,
             )
         else:
             QMessageBox.warning(

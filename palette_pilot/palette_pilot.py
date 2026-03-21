@@ -12,6 +12,8 @@ from qgis.PyQt.QtWidgets import QAction
 from qgis.core import QgsStyle
 from qgis.gui import QgisInterface
 
+from . import qt_compat
+
 # Default ramp name for the M2 stub (must exist in QgsStyle default ramps)
 _DEFAULT_RAMP_NAME = "Spectral"
 
@@ -77,7 +79,7 @@ def apply_ramp_to_layer(layer, ramp) -> bool:
     """
     if not layer or not ramp:
         return False
-    if layer.type() != layer.VectorLayer:
+    if layer.type() != qt_compat.VectorLayerType:
         return False
 
     renderer = layer.renderer()
