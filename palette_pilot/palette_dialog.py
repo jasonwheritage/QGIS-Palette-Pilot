@@ -23,6 +23,8 @@ from qgis.PyQt.QtWidgets import (
     QShortcut,
     QCheckBox,
     QInputDialog,
+    QTabWidget,
+    QWidget,
 )
 from qgis.core import (
     QgsStyle,
@@ -30,10 +32,13 @@ from qgis.core import (
     QgsMessageLog,
     QgsSingleSymbolRenderer,
     QgsApplication,
+    QgsProject,
 )
 from qgis.gui import QgisInterface, QgsColorButton, QgsColorRampButton
 
 from . import qt_compat
+from . import theme_engine
+from .theme_editor_dialog import ThemeEditorDialog
 
 # Key for persisting list of ramp names saved via "Save current as…" (plugin-owned; persists between sessions)
 _SAVED_STYLES_KEY = "palette_pilot/saved_style_names"
@@ -42,6 +47,31 @@ _SAVED_SINGLE_COLOURS_KEY = "palette_pilot/saved_single_colours"
 
 # Subfolder under QGIS settings dir for full layer style .qml files; organised by geometry type (point/line/polygon/other)
 _FULL_STYLE_SUBDIR = "palette_pilot_full_styles"
+
+# Theme persistence keys
+_THEME_ENABLED_KEY = "palette_pilot/theme_enabled"
+_THEME_LAST_KEY = "palette_pilot/last_theme"
+
+
+def _get_theme_enabled():
+    """Return True if the theme toggle was last left enabled."""
+    settings = QgsSettings()
+    return settings.value(_THEME_ENABLED_KEY, False, type=bool)
+
+
+def _set_theme_enabled(enabled):
+    """Persist the theme toggle state."""
+    QgsSettings().setValue(_THEME_ENABLED_KEY, enabled)
+
+
+def _get_last_theme():
+    """Return the name of the last-applied theme, or empty string."""
+    return QgsSettings().value(_THEME_LAST_KEY, "", type=str)
+
+
+def _set_last_theme(name):
+    """Persist the last-applied theme name."""
+    QgsSettings().setValue(_THEME_LAST_KEY, name)
 
 
 def _get_full_style_directory():
@@ -200,6 +230,9 @@ class PaletteToolDialog(QDialog):
         self._suppress_saved_style_apply = True
         self._suppress_saved_colour_apply = True
         self._suppress_full_style_apply = True
+        # Theme state
+        self._theme_active_name = _get_last_theme()
+        self._theme_signal_connected = False
         self._build_ui()
         self._populate_ramps()
         self._populate_saved_styles()
@@ -210,6 +243,9 @@ class PaletteToolDialog(QDialog):
         self.saved_colours_combo.currentIndexChanged.connect(self._on_saved_colour_changed)
         self.full_style_combo.currentIndexChanged.connect(self._on_full_style_changed)
         self.ramp_button.colorRampChanged.connect(self._on_ramp_button_changed)
+        self.theme_combo.currentIndexChanged.connect(
+            lambda _: self._update_theme_ui_state()
+        )
         self._on_ramp_changed()
         self._suppress_ramp_auto_apply = False
         self._suppress_saved_style_apply = False
@@ -237,8 +273,11 @@ class PaletteToolDialog(QDialog):
         self._populate_saved_styles()
         self._populate_saved_colours()
         self._populate_full_styles()
+        self._populate_themes()
         self._refresh_timer.start()
         self.ramp_combo.setFocus(qt_compat.OtherFocusReason)
+        # Re-sync theme auto-apply connection based on toggle state
+        self._sync_theme_connection()
 
     def hideEvent(self, event):
         self._refresh_timer.stop()
@@ -247,13 +286,21 @@ class PaletteToolDialog(QDialog):
     def _build_ui(self):
         layout = QVBoxLayout(self)
 
+        # --- Tab widget ---
+        self.tab_widget = QTabWidget()
+        layout.addWidget(self.tab_widget)
+
+        # === Home tab (existing experience) ===
+        home_tab = QWidget()
+        home_layout = QVBoxLayout(home_tab)
+
         # Target layer (active layer only; read-only)
         target_group = QGroupBox("Target layer")
         target_layout = QVBoxLayout(target_group)
         self.target_label = QLabel("—")
         self.target_label.setStyleSheet("font-weight: bold;")
         target_layout.addWidget(self.target_label)
-        layout.addWidget(target_group)
+        home_layout.addWidget(target_group)
 
         # Colour ramp selection + preview
         ramp_group = QGroupBox("Colour ramp for classes")
@@ -281,7 +328,7 @@ class PaletteToolDialog(QDialog):
         self.save_current_btn.clicked.connect(self._on_save_current_as)
         saved_row.addWidget(self.save_current_btn)
         ramp_layout.addLayout(saved_row)
-        layout.addWidget(ramp_group)
+        home_layout.addWidget(ramp_group)
 
         # Single symbol colour (only meaningful when renderer is single symbol)
         colour_group = QGroupBox("Single symbol colour")
@@ -301,7 +348,7 @@ class PaletteToolDialog(QDialog):
         self.save_current_colour_btn.clicked.connect(self._on_save_current_colour_as)
         saved_colours_row.addWidget(self.save_current_colour_btn)
         colour_layout.addLayout(saved_colours_row)
-        layout.addWidget(colour_group)
+        home_layout.addWidget(colour_group)
         self._ramp_group = ramp_group
         self._colour_group = colour_group
 
@@ -325,10 +372,16 @@ class PaletteToolDialog(QDialog):
         full_row2.addWidget(self.copy_style_path_btn)
         full_row2.addWidget(self.open_style_location_btn)
         full_style_layout.addLayout(full_row2)
-        layout.addWidget(full_style_group)
+        home_layout.addWidget(full_style_group)
         self._full_style_group = full_style_group
 
-        # Buttons
+        home_layout.addStretch()
+        self.tab_widget.addTab(home_tab, "Home")
+
+        # === Themes tab ===
+        self._build_themes_tab()
+
+        # --- Buttons (always visible, below tabs) ---
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         self.apply_btn = QPushButton("Apply")
@@ -351,6 +404,255 @@ class PaletteToolDialog(QDialog):
         btn_layout.addWidget(self.apply_btn)
         btn_layout.addWidget(self.close_btn)
         layout.addLayout(btn_layout)
+
+    def _build_themes_tab(self):
+        """Build the Themes tab content."""
+        themes_tab = QWidget()
+        themes_layout = QVBoxLayout(themes_tab)
+
+        # --- Enable toggle ---
+        self.theme_toggle = QCheckBox("Enable theme auto-styling")
+        self.theme_toggle.setStyleSheet("font-weight: bold;")
+        self.theme_toggle.setChecked(_get_theme_enabled())
+        self.theme_toggle.toggled.connect(self._on_theme_toggle_changed)
+        themes_layout.addWidget(self.theme_toggle)
+
+        # --- Theme selector ---
+        theme_select_group = QGroupBox("Active theme")
+        theme_select_layout = QVBoxLayout(theme_select_group)
+        theme_combo_row = QHBoxLayout()
+        self.theme_combo = QComboBox()
+        self.theme_combo.setMinimumWidth(220)
+        self.theme_combo.setEditable(False)
+        theme_combo_row.addWidget(self.theme_combo)
+        theme_select_layout.addLayout(theme_combo_row)
+
+        # Management buttons
+        mgmt_row = QHBoxLayout()
+        self.new_theme_btn = QPushButton("New…")
+        self.new_theme_btn.clicked.connect(self._on_new_theme)
+        mgmt_row.addWidget(self.new_theme_btn)
+        self.edit_theme_btn = QPushButton("Edit…")
+        self.edit_theme_btn.clicked.connect(self._on_edit_theme)
+        mgmt_row.addWidget(self.edit_theme_btn)
+        self.delete_theme_btn = QPushButton("Delete")
+        self.delete_theme_btn.clicked.connect(self._on_delete_theme)
+        mgmt_row.addWidget(self.delete_theme_btn)
+        mgmt_row.addStretch()
+        theme_select_layout.addLayout(mgmt_row)
+
+        themes_layout.addWidget(theme_select_group)
+        self._theme_select_group = theme_select_group
+
+        # --- Status area ---
+        status_group = QGroupBox("Status")
+        status_layout = QVBoxLayout(status_group)
+        self.theme_status_label = QLabel("No theme active.")
+        self.theme_status_label.setWordWrap(True)
+        status_layout.addWidget(self.theme_status_label)
+        themes_layout.addWidget(status_group)
+
+        # --- Description ---
+        desc = QLabel(
+            "When enabled, the selected theme is applied to all project layers "
+            "on Apply (or Enter) and automatically to any new layers added while "
+            "the toggle is on.  Only one theme is active at a time.\n\n"
+            "A theme is a set of rules, each pairing a .qml style file with a "
+            "regex pattern that matches layer names."
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #666; margin-top: 8px;")
+        themes_layout.addWidget(desc)
+
+        themes_layout.addStretch()
+        self.tab_widget.addTab(themes_tab, "Themes")
+
+        # Initial UI state
+        self._update_theme_ui_state()
+
+    # ------------------------------------------------------------------
+    # Theme helpers
+    # ------------------------------------------------------------------
+
+    def _available_themes(self):
+        """Return a list of available theme names from the themes directory."""
+        return theme_engine.list_themes()
+
+    def _populate_themes(self):
+        """Refresh the theme combo with available themes, preserving selection."""
+        self.theme_combo.clear()
+        self.theme_combo.addItem("—")
+        themes = self._available_themes()
+        for name in themes:
+            self.theme_combo.addItem(name)
+        # Restore last-used theme if still available
+        last = _get_last_theme()
+        if last:
+            idx = self.theme_combo.findText(last)
+            if idx >= 0:
+                self.theme_combo.setCurrentIndex(idx)
+
+    def _update_theme_ui_state(self):
+        """Enable/disable theme controls based on toggle state; update status label."""
+        enabled = self.theme_toggle.isChecked()
+        self._theme_select_group.setEnabled(enabled)
+        has_theme = (
+            self.theme_combo.currentIndex() > 0
+            and self.theme_combo.currentText().strip() != "—"
+        )
+        self.edit_theme_btn.setEnabled(has_theme)
+        self.delete_theme_btn.setEnabled(has_theme)
+        if not enabled:
+            self.theme_status_label.setText("Themes disabled.")
+        elif self._theme_active_name:
+            self.theme_status_label.setText(
+                f'Active theme: "{self._theme_active_name}"\n'
+                "New layers will be styled automatically."
+            )
+        else:
+            self.theme_status_label.setText("No theme active. Select a theme and click Apply.")
+
+    def _on_theme_toggle_changed(self, checked):
+        """Handle the theme enable/disable toggle."""
+        _set_theme_enabled(checked)
+        self._sync_theme_connection()
+        if not checked:
+            # Toggling off clears the active theme (but remembers the last name for restore)
+            self._theme_active_name = ""
+        self._update_theme_ui_state()
+
+    def _sync_theme_connection(self):
+        """
+        Connect or disconnect the QgsProject.layersAdded signal so new layers
+        are auto-styled only while the toggle is on **and** a theme is active.
+        """
+        should_connect = (
+            self.theme_toggle.isChecked() and bool(self._theme_active_name)
+        )
+        project = QgsProject.instance()
+        if should_connect and not self._theme_signal_connected:
+            project.layersAdded.connect(self._on_layers_added)
+            self._theme_signal_connected = True
+        elif not should_connect and self._theme_signal_connected:
+            try:
+                project.layersAdded.disconnect(self._on_layers_added)
+            except (TypeError, RuntimeError):
+                pass
+            self._theme_signal_connected = False
+
+    def _on_layers_added(self, layers):
+        """
+        Slot for QgsProject.layersAdded — auto-apply the active theme to
+        every newly-added vector layer.
+        """
+        if not self._theme_active_name or not self.theme_toggle.isChecked():
+            return
+        for layer in layers:
+            if layer.type() != qt_compat.VectorLayerType:
+                continue
+            self._apply_theme_to_layer(layer, self._theme_active_name)
+
+    def _on_new_theme(self):
+        """Open the theme editor to create a new theme."""
+        dlg = ThemeEditorDialog(self.iface, parent=self)
+        if dlg.exec_() == QDialog.Accepted:
+            name = dlg.saved_theme_name()
+            self._populate_themes()
+            if name:
+                idx = self.theme_combo.findText(name)
+                if idx >= 0:
+                    self.theme_combo.setCurrentIndex(idx)
+            self._update_theme_ui_state()
+
+    def _on_edit_theme(self):
+        """Open the theme editor for the currently selected theme."""
+        name = self.theme_combo.currentText().strip()
+        if not name or name == "—":
+            return
+        data = theme_engine.load_theme(name)
+        if not data:
+            QMessageBox.warning(
+                self, "Palette Pilot",
+                f'Could not load theme "{name}".',
+            )
+            return
+        dlg = ThemeEditorDialog(self.iface, parent=self, theme_data=data)
+        if dlg.exec_() == QDialog.Accepted:
+            new_name = dlg.saved_theme_name()
+            self._populate_themes()
+            select = new_name or name
+            idx = self.theme_combo.findText(select)
+            if idx >= 0:
+                self.theme_combo.setCurrentIndex(idx)
+            # If the active theme was renamed, update the active name
+            if self._theme_active_name == name and new_name and new_name != name:
+                self._theme_active_name = new_name
+                _set_last_theme(new_name)
+            self._update_theme_ui_state()
+
+    def _on_delete_theme(self):
+        """Delete the currently selected theme."""
+        name = self.theme_combo.currentText().strip()
+        if not name or name == "—":
+            return
+        reply = QMessageBox.question(
+            self, "Palette Pilot",
+            f'Delete theme "{name}"?  This cannot be undone.',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        theme_engine.delete_theme(name)
+        if self._theme_active_name == name:
+            self._theme_active_name = ""
+            _set_last_theme("")
+            self._sync_theme_connection()
+        self._populate_themes()
+        self._update_theme_ui_state()
+        self.iface.messageBar().pushMessage(
+            "Palette Pilot",
+            f'Deleted theme "{name}".',
+            level=qt_compat.MessageInfo,
+            duration=3,
+        )
+
+    def _apply_theme_to_layer(self, layer, theme_name):
+        """
+        Apply *theme_name* to a single vector *layer* using theme_engine.
+        Returns True if a rule matched and was applied.
+        """
+        data = theme_engine.load_theme(theme_name)
+        if not data:
+            QgsMessageLog.logMessage(
+                f'Theme "{theme_name}" not found or invalid.',
+                "Palette Pilot",
+                qt_compat.MessageWarning,
+            )
+            return False
+        return theme_engine.apply_theme_to_single_layer(data, layer, iface=self.iface)
+
+    def _apply_theme_to_project(self, theme_name):
+        """
+        Apply *theme_name* to every matching vector layer in the project.
+        Returns the number of layers styled.
+        """
+        data = theme_engine.load_theme(theme_name)
+        if not data:
+            QgsMessageLog.logMessage(
+                f'Theme "{theme_name}" not found or invalid.',
+                "Palette Pilot",
+                qt_compat.MessageWarning,
+            )
+            return 0
+        styled, warnings = theme_engine.apply_theme(data, iface=self.iface)
+        for w in warnings:
+            QgsMessageLog.logMessage(
+                f'Theme "{theme_name}": {w}',
+                "Palette Pilot",
+                qt_compat.MessageWarning,
+            )
+        return styled
 
     def _populate_ramps(self):
         self.ramp_combo.clear()
@@ -875,6 +1177,12 @@ class PaletteToolDialog(QDialog):
             return
 
     def _on_apply(self):
+        # --- Themes tab: apply theme to project ---
+        if self.tab_widget.currentIndex() == 1:
+            self._on_apply_theme()
+            return
+
+        # --- Home tab: existing behaviour ---
         from .palette_pilot import apply_ramp_to_layer
 
         # Always use the current active layer
@@ -985,3 +1293,39 @@ class PaletteToolDialog(QDialog):
                 "Switch the layer to one of these in Layer Properties → Symbology, then try again.",
             )
         # Dialog stays open; user closes it with Close button
+
+    def _on_apply_theme(self):
+        """Apply the selected theme to all project layers (Themes tab Apply handler)."""
+        if not self.theme_toggle.isChecked():
+            QMessageBox.warning(
+                self,
+                "Palette Pilot",
+                "Themes are disabled. Enable the toggle first.",
+            )
+            return
+        theme_name = self.theme_combo.currentText().strip()
+        if not theme_name or theme_name == "—":
+            QMessageBox.warning(
+                self,
+                "Palette Pilot",
+                "No theme selected. Choose a theme from the list.",
+            )
+            return
+        # Activate the theme
+        self._theme_active_name = theme_name
+        _set_last_theme(theme_name)
+        self._sync_theme_connection()
+        # Apply to all existing layers
+        count = self._apply_theme_to_project(theme_name)
+        self._update_theme_ui_state()
+        self.iface.messageBar().pushMessage(
+            "Palette Pilot",
+            f'Applied theme "{theme_name}" to {count} layer(s).',
+            level=qt_compat.MessageInfo,
+            duration=3,
+        )
+        QgsMessageLog.logMessage(
+            f'Applied theme "{theme_name}" to {count} layer(s).',
+            "Palette Pilot",
+            qt_compat.MessageInfo,
+        )
