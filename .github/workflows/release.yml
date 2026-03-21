@@ -15,9 +15,6 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 concurrency:
   group: release
   cancel-in-progress: false
@@ -94,18 +91,18 @@ jobs:
           git push origin HEAD "${{ steps.version.outputs.tag }}"
 
       - name: Create draft GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: Palette Pilot ${{ steps.version.outputs.tag }}
-          draft: true
-          generate_release_notes: true
-          files: palette_pilot_${{ steps.version.outputs.tag }}.zip
-          body: |
-            ## Palette Pilot ${{ steps.version.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "palette_pilot_${{ steps.version.outputs.tag }}.zip" \
+            --title "Palette Pilot ${{ steps.version.outputs.tag }}" \
+            --draft \
+            --generate-notes \
+            --notes "## Palette Pilot ${{ steps.version.outputs.tag }}
 
-            ### Installation
+          ### Installation
 
-            1. Download **palette_pilot_${{ steps.version.outputs.tag }}.zip** from the assets below.
-            2. In QGIS go to **Plugins → Manage and Install Plugins → Install from ZIP**.
-            3. Select the downloaded file and click **Install Plugin**.
+          1. Download **palette_pilot_${{ steps.version.outputs.tag }}.zip** from the assets below.
+          2. In QGIS go to **Plugins → Manage and Install Plugins → Install from ZIP**.
+          3. Select the downloaded file and click **Install Plugin**."
