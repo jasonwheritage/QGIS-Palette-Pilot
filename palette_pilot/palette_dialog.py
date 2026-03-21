@@ -23,6 +23,8 @@ from qgis.PyQt.QtWidgets import (
     QShortcut,
     QCheckBox,
     QInputDialog,
+    QTabWidget,
+    QWidget,
 )
 from qgis.core import (
     QgsStyle,
@@ -247,13 +249,21 @@ class PaletteToolDialog(QDialog):
     def _build_ui(self):
         layout = QVBoxLayout(self)
 
+        # --- Tab widget ---
+        self.tab_widget = QTabWidget()
+        layout.addWidget(self.tab_widget)
+
+        # === Home tab (existing experience) ===
+        home_tab = QWidget()
+        home_layout = QVBoxLayout(home_tab)
+
         # Target layer (active layer only; read-only)
         target_group = QGroupBox("Target layer")
         target_layout = QVBoxLayout(target_group)
         self.target_label = QLabel("—")
         self.target_label.setStyleSheet("font-weight: bold;")
         target_layout.addWidget(self.target_label)
-        layout.addWidget(target_group)
+        home_layout.addWidget(target_group)
 
         # Colour ramp selection + preview
         ramp_group = QGroupBox("Colour ramp for classes")
@@ -281,7 +291,7 @@ class PaletteToolDialog(QDialog):
         self.save_current_btn.clicked.connect(self._on_save_current_as)
         saved_row.addWidget(self.save_current_btn)
         ramp_layout.addLayout(saved_row)
-        layout.addWidget(ramp_group)
+        home_layout.addWidget(ramp_group)
 
         # Single symbol colour (only meaningful when renderer is single symbol)
         colour_group = QGroupBox("Single symbol colour")
@@ -301,7 +311,7 @@ class PaletteToolDialog(QDialog):
         self.save_current_colour_btn.clicked.connect(self._on_save_current_colour_as)
         saved_colours_row.addWidget(self.save_current_colour_btn)
         colour_layout.addLayout(saved_colours_row)
-        layout.addWidget(colour_group)
+        home_layout.addWidget(colour_group)
         self._ramp_group = ramp_group
         self._colour_group = colour_group
 
@@ -325,10 +335,16 @@ class PaletteToolDialog(QDialog):
         full_row2.addWidget(self.copy_style_path_btn)
         full_row2.addWidget(self.open_style_location_btn)
         full_style_layout.addLayout(full_row2)
-        layout.addWidget(full_style_group)
+        home_layout.addWidget(full_style_group)
         self._full_style_group = full_style_group
 
-        # Buttons
+        home_layout.addStretch()
+        self.tab_widget.addTab(home_tab, "Home")
+
+        # === Themes tab ===
+        self._build_themes_tab()
+
+        # --- Buttons (always visible, below tabs) ---
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         self.apply_btn = QPushButton("Apply")
@@ -351,6 +367,33 @@ class PaletteToolDialog(QDialog):
         btn_layout.addWidget(self.apply_btn)
         btn_layout.addWidget(self.close_btn)
         layout.addLayout(btn_layout)
+
+    def _build_themes_tab(self):
+        """Build the Themes tab content."""
+        themes_tab = QWidget()
+        themes_layout = QVBoxLayout(themes_tab)
+
+        # Placeholder header
+        header = QLabel("Themes")
+        header.setStyleSheet("font-weight: bold; font-size: 14px;")
+        themes_layout.addWidget(header)
+
+        desc = QLabel(
+            "Apply a coordinated colour theme across multiple layers at once.\n\n"
+            "Themes let you define a palette of colours and map them to "
+            "several layers in your project, giving you a consistent look "
+            "with one click."
+        )
+        desc.setWordWrap(True)
+        themes_layout.addWidget(desc)
+
+        # Coming soon notice
+        coming_soon = QLabel("Coming soon — this feature is under development.")
+        coming_soon.setStyleSheet("color: #666; font-style: italic; margin-top: 12px;")
+        themes_layout.addWidget(coming_soon)
+
+        themes_layout.addStretch()
+        self.tab_widget.addTab(themes_tab, "Themes")
 
     def _populate_ramps(self):
         self.ramp_combo.clear()
