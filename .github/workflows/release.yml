@@ -26,19 +26,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.x"
 
-      - name: Compute new version
+      - name: Compute new version from latest published release
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          current=$(grep -E '^version=' palette_pilot/metadata.txt | cut -d= -f2)
-          if [ -z "$current" ]; then
-            echo "::error::Could not read version from palette_pilot/metadata.txt"
-            exit 1
+          # Find the latest published (non-draft, non-prerelease) release tag
+          latest_tag=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [ -z "$latest_tag" ]; then
+            echo "No published release found; starting from 0.0.0"
+            current="0.0.0"
+          else
+            current="${latest_tag#v}"
+            echo "Latest published release: $latest_tag (version $current)"
           fi
           IFS='.' read -r major minor patch <<< "$current"
 
@@ -61,7 +69,19 @@ jobs:
           echo "current=$current" >> "$GITHUB_OUTPUT"
           echo "new=$new_version" >> "$GITHUB_OUTPUT"
           echo "tag=v${new_version}" >> "$GITHUB_OUTPUT"
+          echo "latest_published_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
           echo "Bumping ${{ github.event.inputs.bump }}: $current -> $new_version"
+
+      - name: Delete stale draft releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Remove any existing draft releases so they don't interfere
+          gh release list --json tagName,isDraft --jq '.[] | select(.isDraft) | .tagName' | while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            echo "Deleting draft release $tag"
+            gh release delete "$tag" --yes --cleanup-tag || true
+          done
 
       - name: Update version in metadata.txt
         run: |
@@ -94,11 +114,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            "palette_pilot_${{ steps.version.outputs.tag }}.zip" \
-            --title "Palette Pilot ${{ steps.version.outputs.tag }}" \
-            --draft \
-            --generate-notes \
+          release_args=(
+            "${{ steps.version.outputs.tag }}"
+            "palette_pilot_${{ steps.version.outputs.tag }}.zip"
+            --title "Palette Pilot ${{ steps.version.outputs.tag }}"
+            --draft
+            --generate-notes
+          )
+          if [ -n "${{ steps.version.outputs.latest_published_tag }}" ]; then
+            release_args+=(--notes-start-tag "${{ steps.version.outputs.latest_published_tag }}")
+          fi
+          release_args+=(
             --notes "## Palette Pilot ${{ steps.version.outputs.tag }}
 
           ### Installation
@@ -106,3 +132,6 @@ jobs:
           1. Download **palette_pilot_${{ steps.version.outputs.tag }}.zip** from the assets below.
           2. In QGIS go to **Plugins → Manage and Install Plugins → Install from ZIP**.
           3. Select the downloaded file and click **Install Plugin**."
+          )
+
+          gh release create "${release_args[@]}"

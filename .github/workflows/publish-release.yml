@@ -51,15 +51,30 @@ jobs:
           git tag "${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
 
+      - name: Find latest published release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest_tag=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty')
+          echo "tag=${latest_tag}" >> "$GITHUB_OUTPUT"
+          echo "Latest published release tag: ${latest_tag:-none}"
+
       - name: Create draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            "palette_pilot_${{ steps.version.outputs.tag }}.zip" \
-            --title "Palette Pilot ${{ steps.version.outputs.tag }}" \
-            --draft \
-            --generate-notes \
+          release_args=(
+            "${{ steps.version.outputs.tag }}"
+            "palette_pilot_${{ steps.version.outputs.tag }}.zip"
+            --title "Palette Pilot ${{ steps.version.outputs.tag }}"
+            --draft
+            --generate-notes
+          )
+          if [ -n "${{ steps.latest.outputs.tag }}" ]; then
+            release_args+=(--notes-start-tag "${{ steps.latest.outputs.tag }}")
+          fi
+          release_args+=(
             --notes "## Palette Pilot ${{ steps.version.outputs.tag }}
 
           ### Installation
@@ -67,3 +82,6 @@ jobs:
           1. Download **palette_pilot_${{ steps.version.outputs.tag }}.zip** from the assets below.
           2. In QGIS go to **Plugins → Manage and Install Plugins → Install from ZIP**.
           3. Select the downloaded file and click **Install Plugin**."
+          )
+
+          gh release create "${release_args[@]}"
