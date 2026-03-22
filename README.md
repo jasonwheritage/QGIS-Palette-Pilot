@@ -37,7 +37,61 @@ Changing layer colours in QGIS usually means opening **Layer Properties → Symb
 1. Set your layer’s symbology in **QGIS Layer Properties → Symbology** (Single symbol, Graduated, or Categorized; for graduated/categorized, select the **field** to ramp on).
 2. Open **Plugins → Palette Pilot** (or the toolbar icon), select one or more layers, then choose a ramp or colour and it will be applied automatically, otherwise click **Apply**.
 
-{placeholder for animated Palette Pilot demo}
+## Quick concept diagrams
+
+### 1) Workflow: Home tab to Theme application
+
+```mermaid
+flowchart TD
+    A[Open Palette Pilot] --> B{Choose tab}
+    B -->|Home| C[Pick ramp/colour/full style]
+    C --> D[Click Apply]
+    D --> E[Layer renderer/style updated]
+    B -->|Themes| F[Enable theme auto-styling]
+    F --> G[Select/Create theme]
+    G --> H[Click Apply]
+    H --> I[Theme rules applied to matching layers]
+    I --> J[New layers added?]
+    J -->|Yes| K[QGIS layersAdded signal]
+    K --> L[Auto-apply active theme]
+    J -->|No| M[Keep current theme state]
+```
+
+### 2) Data model and plugin directory tree
+
+```mermaid
+flowchart LR
+    T[Theme JSON<br/>name + ordered rules] --> R1[Rule<br/>geometry_type]
+    T --> R2[Rule<br/>style_file]
+    T --> R3[Rule<br/>pattern regex]
+    R2 --> QML[.qml file]
+
+    subgraph Dir[QGIS settings directory]
+      D1[palette_pilot_themes/<br/>*.json]
+      D2[palette_pilot_full_styles/point/*.qml]
+      D3[palette_pilot_full_styles/line/*.qml]
+      D4[palette_pilot_full_styles/polygon/*.qml]
+    end
+
+    T --> D1
+    QML --> D2
+    QML --> D3
+    QML --> D4
+```
+
+### 3) Integration with existing QGIS infrastructure
+
+```mermaid
+flowchart LR
+    UI[Palette Pilot UI] --> TE[theme_engine.py]
+    UI --> QSET[QgsSettings<br/>persist toggle + last theme]
+    TE --> QPROJ[QgsProject layers]
+    TE --> LNS[layer.loadNamedStyle(.qml)]
+    UI --> QSTYLE[QgsStyle ramps]
+    LNS --> CANVAS[QGIS map canvas repaint]
+    QPROJ --> SIG[layersAdded signal]
+    SIG --> UI
+```
 
 
 
