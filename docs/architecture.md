@@ -36,12 +36,14 @@ See [PLAN.md](../PLAN.md) for full context. This document summarises the archite
 
 ## Future recommendations
 
-- **Compatibility and metadata:** Publish a compatibility matrix (e.g. plugin version ↔ QGIS 3.28 LTR, 3.34, 3.44, 4.x) and set `qgisMinimumVersion` / `qgisMaximumVersion` in `metadata.txt` so users get clear install constraints. When new Qt or QGIS enum changes appear, add resolution entries to `qt_compat.py`.
+- **Expand palette controls from the Home tab:** Add generation and quick selection of custom themed palettes (for example pastel, neon, greyscale, high-contrast) so users can apply intent-driven colour styles without manually building each palette.
 
-- **Extend renderer/layer support only if needed:** Consider raster or other vector renderers only if there is user demand and a clear path with `QgsStyle` / existing APIs; avoid scope creep.
+- **Improve styling quality-of-life controls:** Add symbol line colour and line weight controls, and separate transparency controls for fill and line so users can tune readability and cartographic emphasis faster.
 
-- **Plugin repository:** Once stable, consider publishing to the official QGIS plugin repository for discoverability and one-click install.
+- **Compact the Theme tab layout:** Rework spacing and control density to allow more rules to be visible at once, reducing scrolling while editing larger themes.
 
-- **Keep logic testable:** Isolate pure logic (e.g. building a ramp from a colour list, mapping ramp to categories) in small functions or modules that can be unit-tested in the project venv without QGIS; reserve QGIS for integration and UI.
+- **Support rule reordering:** Allow rules to be shifted up/down to make precedence editing explicit and quick when multiple regex patterns overlap.
 
-- **Document architecture decisions:** When making larger changes (e.g. where to store user palettes, how to handle reclassification), record the rationale in this file or in ADRs so future work stays consistent.
+- **Support rule toggling:** Allow rules to be enabled/disabled without deletion to simplify experimentation and troubleshooting.
+
+- **Group rules by geometry type:** Optionally segment rules into point, line, and polygon groups to improve discoverability and reduce accidental cross-geometry edits.
