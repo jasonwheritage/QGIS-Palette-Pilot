@@ -145,7 +145,7 @@ flowchart LR
     UI[Palette Pilot UI] --> TE[theme_engine.py]
     UI --> QSET[QgsSettings<br/>persist toggle + last theme]
     TE --> QPROJ[QgsProject layers]
-    TE --> LNS[layer.loadNamedStyle .qml]
+    TE --> LNS["layer.loadNamedStyle('.qml')"]
     UI --> QSTYLE[QgsStyle ramps]
     LNS --> CANVAS[QGIS map canvas repaint]
     QPROJ --> SIG[layersAdded signal]
