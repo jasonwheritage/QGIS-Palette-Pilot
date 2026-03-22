@@ -91,3 +91,7 @@ The plugin uses `QgsMessageLog` or Python `logging`. Logs appear in **View → P
 ## Contributing and translations
 
 To add or update translations, see the [Translations](../README.md#translations) section in the main README. Source files are in `palette_pilot/i18n/` (`.pro` and `.ts` files); use `self.tr("…")` in plugin code for user-visible strings so `pylupdate5` can extract them.
+
+## Development tooling note
+
+Palette Pilot has been developed with AI-assisted workflows in both **Cursor** and **GitHub Copilot (Claude Opus 4.6)**.
