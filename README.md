@@ -5,6 +5,8 @@ A **QGIS plugin** to style vector layers in a snap: colour ramps, saved colours,
 - **Vector layers** only: apply colours to **single-symbol** layers, or apply built-in or saved ramps to **graduated** or **categorized** symbology; save/load full .qml styles by geometry type and apply them through saved theme rules.
 - Runs inside QGIS as an installable Python plugin.
 
+<video src="docs/assets/QGIS-Palette-Pilot-Demo-01.mp4" controls width="100%"></video>
+
 ## Installation
 
 Palette Pilot runs in [QGIS](https://qgis.org/) 3.28 or later (including Qt6 builds and QGIS 4.x). One flow for every OS:
