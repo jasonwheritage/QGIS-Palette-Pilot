@@ -1,8 +1,8 @@
 # Palette Pilot
 
-A **QGIS plugin** to style vector layers in a snap: colour ramps, saved colours, and full layer styles (point, line, polygon).
+A **QGIS plugin** to style vector layers in a snap: colour ramps, saved colours, full layer styles (point, line, polygon), and reusable themes.
 
-- **Vector layers** only: apply colours to **single-symbol** layers, or apply built-in or saved ramps to **graduated** or **categorized** symbology; save/load full .qml styles by geometry type.
+- **Vector layers** only: apply colours to **single-symbol** layers, or apply built-in or saved ramps to **graduated** or **categorized** symbology; save/load full .qml styles by geometry type and apply them through saved theme rules.
 - Runs inside QGIS as an installable Python plugin.
 
 ## Installation
@@ -30,13 +30,68 @@ Changing layer colours in QGIS usually means opening **Layer Properties → Symb
 - **Single symbol** — One colour for the whole layer. Open Palette Pilot, pick a colour (or a saved colour), and apply. Ideal for boundaries, background layers, or any layer that uses a single symbol.
 - **Graduated** — Colours by a numeric field (e.g. population, elevation). The **field to classify on must already be set** in Layer Properties → Symbology (e.g. “Value” = your numeric field). Palette Pilot then applies a colour ramp to those classes without you re-opening Symbology.
 - **Categorized** — Colours by a category field (e.g. type, region). The **field to classify on must already be set** in Layer Properties → Symbology (e.g. “Value” = your category field). Palette Pilot applies a ramp across the categories.
+- **Themes (full style rules)** — Save a theme made of ordered rules that match layer names (regex) and apply `.qml` styles by geometry type. Use this to quickly re-apply a consistent full-style setup across projects.
 
 **Steps:**
 
 1. Set your layer’s symbology in **QGIS Layer Properties → Symbology** (Single symbol, Graduated, or Categorized; for graduated/categorized, select the **field** to ramp on).
 2. Open **Plugins → Palette Pilot** (or the toolbar icon), select one or more layers, then choose a ramp or colour and it will be applied automatically, otherwise click **Apply**.
 
-{placeholder for animated Palette Pilot demo}
+## Quick concept diagrams
+
+### 1) Workflow: Home tab to Theme application
+
+```mermaid
+flowchart TD
+    A[Open Palette Pilot] --> B{Choose tab}
+    B -->|Home| C[Pick ramp/colour/full style]
+    C --> D[Click Apply]
+    D --> E[Layer renderer/style updated]
+    B -->|Themes| F[Enable theme auto-styling]
+    F --> G[Select/Create theme]
+    G --> H[Click Apply]
+    H --> I[Theme rules applied to matching layers]
+    I --> J[New layers added?]
+    J -->|Yes| K[QGIS layersAdded signal]
+    K --> L[Auto-apply active theme]
+    J -->|No| M[Keep current theme state]
+```
+
+### 2) Data model and plugin directory tree
+
+```mermaid
+flowchart LR
+    T[Theme JSON<br/>name + ordered rules] --> R1[Rule<br/>geometry_type]
+    T --> R2[Rule<br/>style_file]
+    T --> R3[Rule<br/>pattern regex]
+    R2 --> QML[.qml file]
+
+    subgraph Dir[QGIS settings directory]
+      D1[palette_pilot_themes/<br/>*.json]
+      D2[palette_pilot_full_styles/point/*.qml]
+      D3[palette_pilot_full_styles/line/*.qml]
+      D4[palette_pilot_full_styles/polygon/*.qml]
+    end
+
+    T --> D1
+    QML --> D2
+    QML --> D3
+    QML --> D4
+```
+
+### 3) Integration with existing QGIS infrastructure
+
+```mermaid
+flowchart LR
+    UI[Palette Pilot UI] --> TE[theme_engine.py]
+    UI --> QSET[QgsSettings<br/>persist toggle + last theme]
+    TE --> QPROJ[QgsProject layers]
+    TE --> LNS[layer.loadNamedStyle(.qml)]
+    UI --> QSTYLE[QgsStyle ramps]
+    LNS --> CANVAS[QGIS map canvas repaint]
+    QPROJ --> SIG[layersAdded signal]
+    SIG --> UI
+```
 
 
 
@@ -53,7 +108,7 @@ For more on design and trade-offs, see [docs/architecture.md](docs/architecture.
 
 ## How this project was developed
 
-This plugin was developed with **Cursor** using AI-assisted coding (the Cursor agent). Design, implementation, docs, and release prep were done in collaboration with the agent—iterating on the codebase, QGIS plugin conventions, and documentation from within the editor.
+This plugin was developed with AI-assisted coding using **Cursor** and **GitHub Copilot (Claude Opus 4.6)**. Design, implementation, docs, and release prep were done in collaboration with these tools—iterating on the codebase, QGIS plugin conventions, and documentation from within the editor.
 
 ## Development
 
