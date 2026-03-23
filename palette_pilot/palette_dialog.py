@@ -232,6 +232,41 @@ def _add_saved_single_colour(display_name, hex_str):
     settings.setValue(_SAVED_SINGLE_COLOURS_KEY, "\n".join(lines))
 
 
+def _remove_saved_single_colour_by_hex(hex_str):
+    """
+    Remove every saved-colour line whose colour matches *hex_str* (normalized via ``QColor``).
+
+    Returns True if at least one line was removed.
+    """
+    hex_str = (hex_str or "").strip()
+    if not hex_str:
+        return False
+    target = QColor(hex_str)
+    if not target.isValid():
+        return False
+    tnorm = target.name().lower()
+    settings = QgsSettings()
+    raw = settings.value(_SAVED_SINGLE_COLOURS_KEY, "", type=str)
+    lines = [ln.strip() for ln in raw.split("\n") if ln.strip()]
+    kept = []
+    removed = False
+    for ln in lines:
+        if "|" in ln:
+            _, h = ln.split("|", 1)
+            h = h.strip()
+        else:
+            h = ln.strip()
+        qc = QColor(h)
+        if qc.isValid() and qc.name().lower() == tnorm:
+            removed = True
+            continue
+        kept.append(ln)
+    if not removed:
+        return False
+    settings.setValue(_SAVED_SINGLE_COLOURS_KEY, "\n".join(kept))
+    return True
+
+
 class PaletteToolDialog(QDialog):
     """Dialog: apply a built-in colour ramp to the active layer. Stays open until Close."""
 
@@ -262,6 +297,9 @@ class PaletteToolDialog(QDialog):
             self._update_delete_saved_ramp_enabled
         )
         self.saved_colours_combo.currentIndexChanged.connect(self._on_saved_colour_changed)
+        self.saved_colours_combo.currentIndexChanged.connect(
+            self._update_delete_saved_colour_enabled
+        )
         self.full_style_combo.currentIndexChanged.connect(self._on_full_style_changed)
         self.ramp_button.colorRampChanged.connect(self._on_ramp_button_changed)
         self.theme_combo.currentIndexChanged.connect(
@@ -269,6 +307,7 @@ class PaletteToolDialog(QDialog):
         )
         self._on_ramp_changed()
         self._update_delete_saved_ramp_enabled()
+        self._update_delete_saved_colour_enabled()
         self._suppress_ramp_auto_apply = False
         self._suppress_saved_style_apply = False
         self._suppress_saved_colour_apply = False
@@ -375,6 +414,12 @@ class PaletteToolDialog(QDialog):
         self.save_current_colour_btn = QPushButton("Save current as…")
         self.save_current_colour_btn.clicked.connect(self._on_save_current_colour_as)
         saved_colours_row.addWidget(self.save_current_colour_btn)
+        self.delete_saved_colour_btn = QPushButton("Delete")
+        self.delete_saved_colour_btn.setToolTip(
+            "Remove the selected colour from Palette Pilot’s saved colours list"
+        )
+        self.delete_saved_colour_btn.clicked.connect(self._on_delete_saved_colour)
+        saved_colours_row.addWidget(self.delete_saved_colour_btn)
         colour_layout.addLayout(saved_colours_row)
         home_layout.addWidget(colour_group)
         self._ramp_group = ramp_group
@@ -1117,6 +1162,65 @@ class PaletteToolDialog(QDialog):
         self.iface.messageBar().pushMessage(
             "Palette Pilot",
             "Saved colour to Saved colours.",
+            level=qt_compat.MessageInfo,
+            duration=3,
+        )
+
+    def _update_delete_saved_colour_enabled(self):
+        """Delete is only meaningful when a real saved colour is selected (not \"—\")."""
+        if not hasattr(self, "delete_saved_colour_btn"):
+            return
+        self.delete_saved_colour_btn.setEnabled(self.saved_colours_combo.currentIndex() > 0)
+
+    def _on_delete_saved_colour(self):
+        """Remove the selected colour from the plugin persisted list."""
+        idx = self.saved_colours_combo.currentIndex()
+        if idx <= 0:
+            QMessageBox.information(
+                self,
+                "Palette Pilot",
+                "Select a saved colour in the list, then click Delete.",
+            )
+            return
+        label = self.saved_colours_combo.currentText().strip()
+        hex_str = self.saved_colours_combo.currentData(qt_compat.UserRole)
+        if not hex_str or not isinstance(hex_str, str):
+            hex_str = label
+        hex_str = (hex_str or "").strip()
+        if not hex_str:
+            return
+        if not QColor(hex_str).isValid():
+            QMessageBox.warning(
+                self,
+                "Palette Pilot",
+                "Could not resolve the colour to remove.",
+            )
+            return
+        reply = QMessageBox.question(
+            self,
+            "Palette Pilot",
+            f'Remove "{label}" from saved colours?\n\n'
+            "The map is not changed; only the saved swatch list is updated.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        if not _remove_saved_single_colour_by_hex(hex_str):
+            QMessageBox.warning(
+                self,
+                "Palette Pilot",
+                "That colour was not found in the saved list.",
+            )
+            return
+        self._suppress_saved_colour_apply = True
+        self._populate_saved_colours()
+        self.saved_colours_combo.setCurrentIndex(0)
+        self._suppress_saved_colour_apply = False
+        self._update_delete_saved_colour_enabled()
+        self.iface.messageBar().pushMessage(
+            "Palette Pilot",
+            f'Removed "{label}" from saved colours.',
             level=qt_compat.MessageInfo,
             duration=3,
         )
