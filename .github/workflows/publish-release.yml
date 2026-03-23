@@ -19,10 +19,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.x"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
 
       - name: Extract version
         id: version
@@ -38,7 +36,7 @@ jobs:
 
       - name: Create release ZIP
         run: |
-          python3 scripts/create_release_zip.py -o "palette_pilot_${{ steps.version.outputs.tag }}.zip"
+          uv run python scripts/create_release_zip.py -o "palette_pilot_${{ steps.version.outputs.tag }}.zip"
           if [ ! -f "palette_pilot_${{ steps.version.outputs.tag }}.zip" ]; then
             echo "::error::Release ZIP was not created"
             exit 1

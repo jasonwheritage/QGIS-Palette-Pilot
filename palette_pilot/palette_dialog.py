@@ -406,9 +406,11 @@ class PaletteToolDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def _build_themes_tab(self):
-        """Build the Themes tab content."""
+        """Build the Themes tab content (compact layout — more vertical space for rules context)."""
         themes_tab = QWidget()
         themes_layout = QVBoxLayout(themes_tab)
+        themes_layout.setContentsMargins(4, 4, 4, 4)
+        themes_layout.setSpacing(4)
 
         # --- Enable toggle ---
         self.theme_toggle = QCheckBox("Enable theme auto-styling")
@@ -417,18 +419,22 @@ class PaletteToolDialog(QDialog):
         self.theme_toggle.toggled.connect(self._on_theme_toggle_changed)
         themes_layout.addWidget(self.theme_toggle)
 
-        # --- Theme selector ---
-        theme_select_group = QGroupBox("Active theme")
+        # --- Theme selector, actions, and status in one group (fewer nested boxes) ---
+        theme_select_group = QGroupBox("Theme")
         theme_select_layout = QVBoxLayout(theme_select_group)
+        theme_select_layout.setSpacing(3)
+        theme_select_layout.setContentsMargins(6, 6, 6, 6)
+
         theme_combo_row = QHBoxLayout()
+        theme_combo_row.setSpacing(4)
         self.theme_combo = QComboBox()
-        self.theme_combo.setMinimumWidth(220)
+        self.theme_combo.setMinimumWidth(200)
         self.theme_combo.setEditable(False)
-        theme_combo_row.addWidget(self.theme_combo)
+        theme_combo_row.addWidget(self.theme_combo, stretch=1)
         theme_select_layout.addLayout(theme_combo_row)
 
-        # Management buttons
         mgmt_row = QHBoxLayout()
+        mgmt_row.setSpacing(4)
         self.new_theme_btn = QPushButton("New…")
         self.new_theme_btn.clicked.connect(self._on_new_theme)
         mgmt_row.addWidget(self.new_theme_btn)
@@ -441,16 +447,13 @@ class PaletteToolDialog(QDialog):
         mgmt_row.addStretch()
         theme_select_layout.addLayout(mgmt_row)
 
-        themes_layout.addWidget(theme_select_group)
-        self._theme_select_group = theme_select_group
-
-        # --- Status area ---
-        status_group = QGroupBox("Status")
-        status_layout = QVBoxLayout(status_group)
         self.theme_status_label = QLabel("No theme active.")
         self.theme_status_label.setWordWrap(True)
-        status_layout.addWidget(self.theme_status_label)
-        themes_layout.addWidget(status_group)
+        self.theme_status_label.setStyleSheet("color: #444; font-size: 11px;")
+        theme_select_layout.addWidget(self.theme_status_label)
+
+        themes_layout.addWidget(theme_select_group)
+        self._theme_select_group = theme_select_group
 
         # --- Description ---
         desc = QLabel(
@@ -461,7 +464,7 @@ class PaletteToolDialog(QDialog):
             "regex pattern that matches layer names."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #666; margin-top: 8px;")
+        desc.setStyleSheet("color: #666; font-size: 11px; margin-top: 2px;")
         themes_layout.addWidget(desc)
 
         themes_layout.addStretch()

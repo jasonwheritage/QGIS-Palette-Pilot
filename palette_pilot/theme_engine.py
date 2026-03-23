@@ -15,11 +15,15 @@ Schema (``<name>.json``)::
         {
           "geometry_type": "point",
           "style_file": "/absolute/path/to/style.qml",
-          "pattern": "(?i)station|stop"
+          "pattern": "(?i)station|stop",
+          "enabled": false
         },
         ...
       ]
     }
+
+Optional key ``enabled`` defaults to true when omitted; when false, the rule
+is skipped during apply (preview, bulk apply, and per-layer auto-styling).
 
 Geometry types are ``"point"``, ``"line"``, ``"polygon"``.  A rule only
 applies to vector layers whose geometry type matches *and* whose name
@@ -107,7 +111,7 @@ def load_theme(name):
     """
     Load and return a theme dict, or ``None`` if not found / invalid.
 
-    Returns ``{"name": str, "rules": [{"geometry_type", "style_file", "pattern"}, ...]}``.
+    Returns ``{"name": str, "rules": [{"geometry_type", "style_file", "pattern", "enabled?"}, ...]}``.
     """
     path = os.path.join(_themes_directory(), name + ".json")
     if not os.path.isfile(path):
@@ -127,7 +131,7 @@ def save_theme(name, rules):
     Persist a theme.
 
     *name* – display name (also used as the file stem after sanitising).
-    *rules* – list of dicts ``{"geometry_type", "style_file", "pattern"}``.
+    *rules* – list of dicts ``{"geometry_type", "style_file", "pattern", "enabled?"}``.
     """
     safe = _re.sub(r'[<>:"/\\|?*]', "_", name.strip())[:200] or "theme"
     path = os.path.join(_themes_directory(), safe + ".json")
@@ -150,6 +154,11 @@ def delete_theme(name):
 # ---------------------------------------------------------------------------
 # Layer helpers
 # ---------------------------------------------------------------------------
+
+def _rule_is_enabled(rule):
+    """True unless the rule explicitly sets ``enabled`` to false."""
+    return rule.get("enabled", True) is not False
+
 
 def _geometry_type_key(layer):
     """Return ``"point"``, ``"line"``, ``"polygon"`` or ``None``."""
@@ -214,6 +223,8 @@ def apply_theme(theme_data, project=None, iface=None):
     styled = 0
     warnings = []
     for rule in rules:
+        if not _rule_is_enabled(rule):
+            continue
         style_path = rule.get("style_file", "")
         if not style_path or not os.path.isfile(style_path):
             warnings.append(f'Style file not found: {style_path}')
@@ -253,6 +264,8 @@ def apply_theme_to_single_layer(theme_data, layer, iface=None):
     if geom is None:
         return False
     for rule in theme_data.get("rules", []):
+        if not _rule_is_enabled(rule):
+            continue
         if rule.get("geometry_type") != geom:
             continue
         pattern = rule.get("pattern", "")

@@ -93,14 +93,14 @@ You can run the script from the repo root, optionally setting the plugin directo
 
 ```bash
 # Use default plugin path for your OS (default profile)
-python3 scripts/install_plugin_for_dev.py
+uv run python scripts/install_plugin_for_dev.py
 
 # Use a specific plugin directory (e.g. from Python Console output)
 set QGIS_PLUGINS_PATH=C:\Users\You\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins
-python3 scripts/install_plugin_for_dev.py
+uv run python scripts/install_plugin_for_dev.py
 
 # Prefer symlink (Unix; on Windows may require admin)
-python3 scripts/install_plugin_for_dev.py --symlink
+uv run python scripts/install_plugin_for_dev.py --symlink
 ```
 
 Details and options are in [development.md](development.md#installing-the-plugin-for-development).

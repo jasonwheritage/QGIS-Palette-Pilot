@@ -60,8 +60,9 @@ This plugin was developed with AI-assisted coding using **Cursor** and **GitHub 
 
 ## Development
 
-- **Setup:** Use **uv** (`uv venv`, then `uv sync` or `uv pip install -e ".[dev]"`) or the **pip** fallback (`python -m venv .venv`, `pip install -r requirements-dev.txt`). See [docs/development.md](docs/development.md#installing-the-plugin-for-development).
-- **Installing the plugin for dev:** Copy or symlink the plugin into your QGIS plugin directory. From the repo root: `./scripts/install_plugin_for_dev.py` (copy) or `./scripts/install_plugin_for_dev.py --symlink` (or `python3 scripts/...`). Set `QGIS_PLUGINS_PATH` if your plugin dir is different. See [docs/installation.md](docs/installation.md#development-install-via-script-copy-or-symlink) and [docs/development.md](docs/development.md).
+- **Setup:** Use **uv** from the repo root: `uv sync --extra dev` (or `uv venv` then `uv sync --extra dev`). Pip fallback: `python -m venv .venv`, activate, `pip install -r requirements-dev.txt`. See [docs/development.md](docs/development.md#installing-the-plugin-for-development).
+- **Installing the plugin for dev:** `uv run python scripts/install_plugin_for_dev.py` (copy) or `uv run python scripts/install_plugin_for_dev.py --symlink`. Set `QGIS_PLUGINS_PATH` if your plugin dir is different. See [docs/installation.md](docs/installation.md#development-install-via-script-copy-or-symlink) and [docs/development.md](docs/development.md).
+- **Tests:** `uv run python -m unittest discover tests -v` or `uv run pytest -v`. See [docs/testing.md](docs/testing.md).
 - **Docs:** [docs/development.md](docs/development.md), [docs/installation.md](docs/installation.md), [docs/testing.md](docs/testing.md), [docs/debugging.md](docs/debugging.md), [docs/architecture.md](docs/architecture.md).
 
 ## Translations

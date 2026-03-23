@@ -314,6 +314,53 @@ class TestThemeEngine(unittest.TestCase):
         self.assertEqual(styled, 2)
         self.assertEqual(warnings, [])
 
+    def test_apply_theme_skips_disabled_rules(self):
+        point_dir = os.path.join(self._tmp, "palette_pilot_full_styles", "point")
+        os.makedirs(point_dir, exist_ok=True)
+        qml = os.path.join(point_dir, "a.qml")
+        with open(qml, "w") as f:
+            f.write("<qgis></qgis>")
+
+        project = self._QgsProject.instance()
+        project._layers = {"a": _FakeLayer("Stops", 0)}
+        data = {
+            "name": "t",
+            "rules": [
+                {
+                    "geometry_type": "point",
+                    "style_file": qml,
+                    "pattern": "Stop",
+                    "enabled": False,
+                },
+            ],
+        }
+        styled, warnings = self.te.apply_theme(data, project)
+        self.assertEqual(styled, 0)
+        self.assertEqual(warnings, [])
+
+    def test_apply_theme_to_single_layer_skips_disabled_rule(self):
+        point_dir = os.path.join(self._tmp, "palette_pilot_full_styles", "point")
+        os.makedirs(point_dir, exist_ok=True)
+        qml_path = os.path.join(point_dir, "stops.qml")
+        with open(qml_path, "w") as f:
+            f.write("<qgis></qgis>")
+
+        data = {
+            "name": "test",
+            "rules": [
+                {
+                    "geometry_type": "point",
+                    "style_file": qml_path,
+                    "pattern": "(?i)stop",
+                    "enabled": False,
+                },
+            ],
+        }
+        layer = _FakeLayer("Bus Stops", 0)
+        result = self.te.apply_theme_to_single_layer(data, layer)
+        self.assertFalse(result)
+        self.assertIsNone(layer._loaded_style)
+
 
 if __name__ == "__main__":
     unittest.main()

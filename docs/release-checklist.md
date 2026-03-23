@@ -61,7 +61,7 @@ Use the **Create Release** GitHub Actions workflow to publish a new release:
 
 - Bump `version` in `palette_pilot/metadata.txt`.
 - Update changelog in `metadata.txt` or README if desired.
-- Create the release zip: from the repo root run `python3 scripts/create_release_zip.py` (output: `palette_pilot.zip`). Use `-o name.zip` to set the output path.
+- Create the release zip: from the repo root run `uv run python scripts/create_release_zip.py` (output: `palette_pilot.zip`). Use `-o name.zip` to set the output path.
 - Tag the release in git (e.g. `v1.0.0`).
 
 ## Publish on the public QGIS plugin server

@@ -5,7 +5,7 @@ How to set up your environment and iterate on the Palette Pilot plugin.
 ## One-time setup
 
 1. **Environment (uv or fallback)**  
-   Use **uv** (`uv venv`, then `uv sync` or `uv pip install -e ".[dev]"`) or the **pip** fallback (`python -m venv .venv`, then `pip install -r requirements-dev.txt`). The plugin runs in QGIS’s Python; the project venv is for linting, tests, and tooling only.
+   From the repo root, prefer **uv**: `uv venv` (if you want an explicit `.venv`) then `uv sync --extra dev` to install dev tools (pylint, pytest, black). Alternatively: `uv pip install -e ".[dev]"`. **pip** fallback: `python -m venv .venv`, activate it, then `pip install -r requirements-dev.txt`. The plugin runs in QGIS’s Python; the project venv is only for linting, tests, and tooling.
 
 2. **QGIS**  
    Install QGIS 3.44 (or the same release series). The plugin runs in QGIS’s Python; your project venv is for linting, tests, and tooling only.
@@ -14,15 +14,15 @@ How to set up your environment and iterate on the Palette Pilot plugin.
    The plugin must sit in QGIS’s plugin directory so it appears in Plugin Manager. You can do that by hand or with the provided script.
 
    - **Option A — Script (recommended)**  
-     From the repo root (with the repo cloned and QGIS installed):
+     From the repo root (with the repo cloned and QGIS installed), use **uv** so the script runs with a consistent interpreter:
      ```bash
-     python3 scripts/install_plugin_for_dev.py
+     uv run python scripts/install_plugin_for_dev.py
      ```
      This **copies** `palette_pilot` into the default QGIS plugin directory for your OS. After you pull changes, run the script again to refresh the copy (or reload the plugin in QGIS if supported).
 
      To use a **symlink** so edits in the repo are used directly (no copy step):
      ```bash
-     python3 scripts/install_plugin_for_dev.py --symlink
+     uv run python scripts/install_plugin_for_dev.py --symlink
      ```
      On Windows, symlinks may require elevated privileges; if it fails, use the default copy mode.
 
@@ -30,11 +30,11 @@ How to set up your environment and iterate on the Palette Pilot plugin.
      ```bash
      # Windows (PowerShell)
      $env:QGIS_PLUGINS_PATH = "C:\Users\You\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins"
-     python3 scripts/install_plugin_for_dev.py
+     uv run python scripts/install_plugin_for_dev.py
 
      # Linux / macOS
      export QGIS_PLUGINS_PATH=~/.local/share/QGIS/QGIS3/profiles/default/python/plugins
-     python3 scripts/install_plugin_for_dev.py
+     uv run python scripts/install_plugin_for_dev.py
      ```
      You can get the path from QGIS: **Plugins → Python Console** → see [installation.md — Method 2](installation.md#method-2-python-console).
 
@@ -54,12 +54,15 @@ How to set up your environment and iterate on the Palette Pilot plugin.
 
 ## Code quality
 
-From the project root with the venv activated:
+From the project root (after `uv sync --extra dev`), use **uv** so tools run from the project environment without activating the venv manually:
 
-- Lint: `pylint palette_pilot` (or `ruff check palette_pilot` if using Ruff).
-- Format: `black palette_pilot` (or `ruff format palette_pilot`).
-- Tests: `uv run python -m unittest discover tests -v` (or `python3 -m unittest discover tests -v`).
+- Lint: `uv run pylint palette_pilot`
+- Format: `uv run black palette_pilot`
+- Tests: `uv run python -m unittest discover tests -v`  
+  Or: `uv run pytest -v` (same suite; `pythonpath` is set in `pyproject.toml`).
   - `test_qt_compat.py` — verifies the Qt5/Qt6 and QGIS 3/4 compatibility shim (`qt_compat.py`) resolves all enum constants correctly under both mock environments. No QGIS installation needed.
+
+If you use a pip-created venv instead, activate it and run the same commands without the `uv run` prefix.
 
 Fix issues before committing.
 

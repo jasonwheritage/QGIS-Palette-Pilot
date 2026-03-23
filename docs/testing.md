@@ -22,7 +22,7 @@ How to test Palette Pilot manually and (if present) with automated tests.
 
 The `qt_compat` module has dedicated unit tests in `tests/test_qt_compat.py`. These mock both Qt5/QGIS 3 and Qt6/QGIS 4 environments to verify that all enum constants resolve correctly on both platforms — no QGIS installation required.
 
-Run from the repo root:
+Run from the repo root (install dev deps once with `uv sync --extra dev`):
 
 ```bash
 uv run python -m unittest tests.test_qt_compat -v
@@ -42,10 +42,10 @@ uv run python -m unittest tests.test_theme_engine -v
 uv run python -m unittest discover tests -v
 ```
 
-Or without uv:
+Equivalent using pytest:
 
 ```bash
-python3 -m unittest tests.test_qt_compat -v
+uv run pytest -v
 ```
 
 ### Other unit tests
