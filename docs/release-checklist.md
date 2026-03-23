@@ -25,9 +25,16 @@ The README **Using the plugin** section includes a placeholder for an animated d
    - Keep the clip short (e.g. 5–15 seconds).
 
 2. **Tools you can use** (OS-agnostic options):
-   - **Linux:** `peek` (GIF), `SimpleScreenRecorder`, or `ffmpeg` (then convert to GIF).
-   - **macOS:** QuickTime or built-in screenshot (Cmd+Shift+5), then convert to GIF if needed.
-   - **Windows:** Xbox Game Bar (Win+G), or a tool like **ScreenToGif** for direct GIF output.
+
+   **Linux (recommended):**
+   - **`slop` + `ffmpeg`** — `slop` lets you click-drag to select a precise screen region, then `ffmpeg` records that region. This gives you pixel-perfect control over the capture area without recording your entire screen or guessing coordinates.
+   - **Kdenlive** — full-featured open-source video editor for trimming, adding titles/annotations, and exporting to MP4 or GIF. Useful when the raw recording needs post-production (e.g. trimming dead time, adding a brief intro).
+
+   **macOS:**
+   - QuickTime or built-in screenshot (Cmd+Shift+5), then convert to GIF if needed.
+
+   **Windows:**
+   - Xbox Game Bar (Win+G), or a tool like **ScreenToGif** for direct GIF output.
 
 3. **Export as GIF** (e.g. 800×600 or similar, not too large for the repo). Save as **`docs/demo.gif`**.
 

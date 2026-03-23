@@ -36,14 +36,20 @@ See [PLAN.md](../PLAN.md) for full context. This document summarises the archite
 
 ## Future recommendations
 
-- **Expand palette controls from the Home tab:** Add generation and quick selection of custom themed palettes (for example pastel, neon, greyscale, high-contrast) so users can apply intent-driven colour styles without manually building each palette.
+The list below is ordered for development: **lower effort and localized changes first**, then **theme-editor improvements in a sensible sequence** (behaviour before heavy layout restructuring), then **Home tab palette UX**, and finally **deeper symbology controls** that touch many renderer and symbol code paths.
 
-- **Improve styling quality-of-life controls:** Add symbol line colour and line weight controls, and separate transparency controls for fill and line so users can tune readability and cartographic emphasis faster.
+1. **Support rule reordering** — *Assessment: low effort, high leverage.* Precedence is already defined by rule order; exposing up/down (or drag) in `ThemeEditorDialog` only reorders the in-memory list before save, with no schema migration. Do this first so users can fix overlaps without delete-and-recreate.
 
-- **Compact the Theme tab layout:** Rework spacing and control density to allow more rules to be visible at once, reducing scrolling while editing larger themes.
+2. **Support rule toggling** — *Assessment: low–medium effort.* Add an optional per-rule `enabled` flag (default `true` for backward compatibility), skip disabled rules in `theme_engine` when applying, and add a checkbox on each rule widget. Builds naturally on stable ordering.
 
-- **Support rule reordering:** Allow rules to be shifted up/down to make precedence editing explicit and quick when multiple regex patterns overlap.
+3. **Compact the Theme tab layout** — *Assessment: medium effort (iteration).* Tighten margins, scroll areas, and rule widget density in the main dialog and theme editor **after** reorder/toggle controls exist, so the final control set drives layout.
 
-- **Support rule toggling:** Allow rules to be enabled/disabled without deletion to simplify experimentation and troubleshooting.
+4. **Group rules by geometry type** — *Assessment: medium effort.* Segment the editor UI (sections, collapsible groups, or tabs) by point/line/polygon while keeping a clear, documented apply order (for example preserve a single linear rule list in JSON, or define how grouped UI maps to order). Easier to design once reorder and toggle are in place.
 
-- **Group rules by geometry type:** Optionally segment rules into point, line, and polygon groups to improve discoverability and reduce accidental cross-geometry edits.
+5. **Delete user-created ramps and themes** — *Assessment: low effort for ramps; theme file deletion is already implemented in the Theme tab.* Remaining work is chiefly removing user-saved colour ramps from `QgsStyle` and pruning the plugin’s saved-name list in `QSettings`, plus confirmation and any polish for “in use” cases. Goal: users can drop obsolete ramps and themes without manual profile edits, with clear behaviour when a definition is still referenced.
+
+6. **Quick colour palette for single symbol layers** — *Assessment: medium effort.* Add a swatch grid on the Home tab wired to the existing single-symbol colour apply path; generate swatches from the current ramp or small fixed preset lists. Independent of the theme editor cluster.
+
+7. **Expand palette controls from the Home tab** — *Assessment: medium–high effort.* Broader preset or generated ramp families (pastel, neon, greyscale, high-contrast, etc.) and integration with ramp selection/apply. Fits after quick swatches if you want to reuse preset colour logic. Deliver generation and quick selection of intent-driven palettes so users need not build every ramp by hand.
+
+8. **Improve styling quality-of-life controls** — *Assessment: high effort.* Line colour, line weight, and separate fill/line transparency require navigating `QgsSymbol` / sub-symbols across single, graduated, and categorized renderers, with many edge cases. Defer until core palette and theme flows are stable. Scope: line colour and weight plus separate fill/line alpha for faster cartographic tuning.
