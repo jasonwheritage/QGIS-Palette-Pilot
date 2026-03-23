@@ -175,6 +175,24 @@ def _add_saved_style_name(name):
     settings.setValue(_SAVED_STYLES_KEY, "\n".join(names))
 
 
+def _remove_saved_style_name(name):
+    """Remove *name* from the plugin’s saved-ramp list in ``QSettings`` (no ``QgsStyle`` change)."""
+    settings = QgsSettings()
+    raw = settings.value(_SAVED_STYLES_KEY, "", type=str)
+    names = [n.strip() for n in raw.split("\n") if n.strip()]
+    if name not in names:
+        return
+    names = [n for n in names if n != name]
+    settings.setValue(_SAVED_STYLES_KEY, "\n".join(names))
+
+
+def _plugin_saved_ramp_names_set():
+    """Set of ramp names recorded under :data:`_SAVED_STYLES_KEY` (may include orphans)."""
+    settings = QgsSettings()
+    raw = settings.value(_SAVED_STYLES_KEY, "", type=str)
+    return {n.strip() for n in raw.split("\n") if n.strip()}
+
+
 # Saved single colours: one line per entry, "display_name|hex" (pipe separator). Legacy: line with no "|" is hex-only; display name then falls back to hex.
 def _get_saved_single_colours():
     """Return list of (display_name, hex_str) saved via the plugin (from QSettings)."""
@@ -240,6 +258,9 @@ class PaletteToolDialog(QDialog):
         self._populate_full_styles()
         self.ramp_combo.currentIndexChanged.connect(self._on_ramp_changed)
         self.saved_styles_combo.currentIndexChanged.connect(self._on_saved_style_changed)
+        self.saved_styles_combo.currentIndexChanged.connect(
+            self._update_delete_saved_ramp_enabled
+        )
         self.saved_colours_combo.currentIndexChanged.connect(self._on_saved_colour_changed)
         self.full_style_combo.currentIndexChanged.connect(self._on_full_style_changed)
         self.ramp_button.colorRampChanged.connect(self._on_ramp_button_changed)
@@ -247,6 +268,7 @@ class PaletteToolDialog(QDialog):
             lambda _: self._update_theme_ui_state()
         )
         self._on_ramp_changed()
+        self._update_delete_saved_ramp_enabled()
         self._suppress_ramp_auto_apply = False
         self._suppress_saved_style_apply = False
         self._suppress_saved_colour_apply = False
@@ -327,6 +349,12 @@ class PaletteToolDialog(QDialog):
         self.save_current_btn = QPushButton("Save current as…")
         self.save_current_btn.clicked.connect(self._on_save_current_as)
         saved_row.addWidget(self.save_current_btn)
+        self.delete_saved_ramp_btn = QPushButton("Delete")
+        self.delete_saved_ramp_btn.setToolTip(
+            "Remove the selected ramp from QGIS styles and Palette Pilot’s saved list"
+        )
+        self.delete_saved_ramp_btn.clicked.connect(self._on_delete_saved_ramp)
+        saved_row.addWidget(self.delete_saved_ramp_btn)
         ramp_layout.addLayout(saved_row)
         home_layout.addWidget(ramp_group)
 
@@ -891,6 +919,96 @@ class PaletteToolDialog(QDialog):
             f'Saved "{name}" to Saved styles.',
             level=qt_compat.MessageInfo,
             duration=3,
+        )
+
+    def _update_delete_saved_ramp_enabled(self):
+        """Delete is only meaningful when a real saved ramp is selected (not \"—\")."""
+        if not hasattr(self, "delete_saved_ramp_btn"):
+            return
+        self.delete_saved_ramp_btn.setEnabled(self.saved_styles_combo.currentIndex() > 0)
+
+    def _on_delete_saved_ramp(self):
+        """Remove the selected ramp from ``QgsStyle`` (if present) and the plugin saved list."""
+        idx = self.saved_styles_combo.currentIndex()
+        if idx <= 0:
+            QMessageBox.information(
+                self,
+                "Palette Pilot",
+                "Select a saved ramp in the list, then click Delete.",
+            )
+            return
+        name = self.saved_styles_combo.currentText().strip()
+        if not name:
+            return
+        if name not in _plugin_saved_ramp_names_set():
+            QMessageBox.warning(
+                self,
+                "Palette Pilot",
+                f'"{name}" is not in Palette Pilot’s saved list, so it will not be deleted. '
+                "Use QGIS Style Manager to remove other ramps.",
+            )
+            return
+        reply = QMessageBox.question(
+            self,
+            "Palette Pilot",
+            f'Delete colour ramp "{name}" from your QGIS default style and remove it from '
+            "Palette Pilot’s saved list?\n\n"
+            "Existing layers keep their current colours until symbology is changed.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        style = QgsStyle.defaultStyle()
+        try:
+            style_names = style.colorRampNames() or []
+        except Exception:
+            style_names = []
+        if name in style_names:
+            rm = getattr(style, "removeColorRamp", None)
+            if rm is None:
+                QMessageBox.warning(
+                    self,
+                    "Palette Pilot",
+                    "This QGIS version does not expose removing colour ramps to Python.",
+                )
+                return
+            try:
+                result = rm(name)
+            except Exception as e:
+                QMessageBox.warning(
+                    self,
+                    "Palette Pilot",
+                    f"Could not remove ramp from style database: {e!s}",
+                )
+                return
+            if result is False:
+                QMessageBox.warning(
+                    self,
+                    "Palette Pilot",
+                    f'Could not remove ramp "{name}" from the style database.',
+                )
+                return
+
+        _remove_saved_style_name(name)
+        self._suppress_saved_style_apply = True
+        self._populate_saved_styles()
+        self.saved_styles_combo.setCurrentIndex(0)
+        self._suppress_saved_style_apply = False
+        self._update_delete_saved_ramp_enabled()
+
+        in_style = name in style_names
+        msg = (
+            f'Deleted "{name}" from styles and saved list.'
+            if in_style
+            else f'Removed "{name}" from saved list (it was not in the style database).'
+        )
+        self.iface.messageBar().pushMessage(
+            "Palette Pilot",
+            msg,
+            level=qt_compat.MessageInfo,
+            duration=4,
         )
 
     def _on_ramp_button_changed(self):
