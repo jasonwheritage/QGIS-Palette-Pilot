@@ -6,6 +6,7 @@ Stays open until the user clicks Close. Keyboard: Up/Down to change ramp, Enter 
 
 import os
 import re
+from functools import partial
 
 from qgis.PyQt.QtCore import Qt, QTimer, QUrl
 from qgis.PyQt.QtGui import QKeySequence, QColor, QDesktopServices
@@ -15,6 +16,7 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog,
     QVBoxLayout,
     QHBoxLayout,
+    QGridLayout,
     QLabel,
     QComboBox,
     QPushButton,
@@ -37,8 +39,10 @@ from qgis.core import (
 from qgis.gui import QgisInterface, QgsColorButton, QgsColorRampButton
 
 from . import qt_compat
+from . import palette_presets
 from . import theme_engine
 from .theme_editor_dialog import ThemeEditorDialog
+from .palette_pilot import apply_ramp_to_layer, _clone_ramp
 
 # Key for persisting list of ramp names saved via "Save current as…" (plugin-owned; persists between sessions)
 _SAVED_STYLES_KEY = "palette_pilot/saved_style_names"
@@ -51,6 +55,17 @@ _FULL_STYLE_SUBDIR = "palette_pilot_full_styles"
 # Theme persistence keys
 _THEME_ENABLED_KEY = "palette_pilot/theme_enabled"
 _THEME_LAST_KEY = "palette_pilot/last_theme"
+
+# Home tab ramp group: title/tooltip depend on whether the layer is single-symbol
+_RAMP_GROUP_TITLE_CLASSES = "Colour ramp for classes"
+_RAMP_GROUP_TITLE_PREVIEW = "Colour ramp preview (for swatches)"
+_RAMP_GROUP_TIP_CLASSES = (
+    "Applies to graduated or categorized layers when you change the ramp or click Apply."
+)
+_RAMP_GROUP_TIP_PREVIEW = (
+    "This layer uses a single symbol. The ramp here only drives the quick swatches "
+    "below — it does not change the map. Pick a ramp or edit it to refresh swatches."
+)
 
 
 def _get_theme_enabled():
@@ -283,6 +298,7 @@ class PaletteToolDialog(QDialog):
         self._suppress_saved_style_apply = True
         self._suppress_saved_colour_apply = True
         self._suppress_full_style_apply = True
+        self._suppress_preset_ramp_apply = False
         # Theme state
         self._theme_active_name = _get_last_theme()
         self._theme_signal_connected = False
@@ -339,6 +355,8 @@ class PaletteToolDialog(QDialog):
         self.ramp_combo.setFocus(qt_compat.OtherFocusReason)
         # Re-sync theme auto-apply connection based on toggle state
         self._sync_theme_connection()
+        self._rebuild_ramp_derived_swatches()
+        self._rebuild_preset_palette_swatches()
 
     def hideEvent(self, event):
         self._refresh_timer.stop()
@@ -395,6 +413,25 @@ class PaletteToolDialog(QDialog):
         self.delete_saved_ramp_btn.clicked.connect(self._on_delete_saved_ramp)
         saved_row.addWidget(self.delete_saved_ramp_btn)
         ramp_layout.addLayout(saved_row)
+
+        intent_row = QHBoxLayout()
+        intent_row.addWidget(QLabel("Intent palette:"))
+        self.preset_ramp_for_classes_combo = QComboBox()
+        self.preset_ramp_for_classes_combo.setMinimumWidth(180)
+        self.preset_ramp_for_classes_combo.addItem("—", "")
+        for key in palette_presets.PRESET_RAMP_DISPLAY_ORDER:
+            self.preset_ramp_for_classes_combo.addItem(key, key)
+        self.preset_ramp_for_classes_combo.setToolTip(
+            "Build a gradient from this named palette. For graduated or categorized "
+            "layers it applies to the map; for single-symbol layers it only updates "
+            "the ramp preview and quick swatches below."
+        )
+        self.preset_ramp_for_classes_combo.currentIndexChanged.connect(
+            self._on_preset_ramp_for_classes_changed
+        )
+        intent_row.addWidget(self.preset_ramp_for_classes_combo, stretch=1)
+        ramp_layout.addLayout(intent_row)
+
         home_layout.addWidget(ramp_group)
 
         # Single symbol colour (only meaningful when renderer is single symbol)
@@ -405,6 +442,38 @@ class PaletteToolDialog(QDialog):
         # Auto-apply new colour to single-symbol layers when the user confirms a pick
         self.colour_button.colorChanged.connect(self._on_single_colour_changed)
         colour_layout.addWidget(self.colour_button)
+
+        sw_lbl = QLabel("Quick swatches from ramp preview (above)")
+        sw_lbl.setWordWrap(True)
+        sw_lbl.setStyleSheet("font-size: 11px; color: #555;")
+        colour_layout.addWidget(sw_lbl)
+        self._ramp_swatch_host = QWidget()
+        self._ramp_swatch_grid = QGridLayout(self._ramp_swatch_host)
+        self._ramp_swatch_grid.setContentsMargins(0, 0, 0, 0)
+        self._ramp_swatch_grid.setSpacing(4)
+        colour_layout.addWidget(self._ramp_swatch_host)
+
+        preset_sw_row = QHBoxLayout()
+        preset_sw_row.addWidget(QLabel("Preset swatches:"))
+        self.preset_swatches_combo = QComboBox()
+        self.preset_swatches_combo.setMinimumWidth(160)
+        self.preset_swatches_combo.addItem("—", "")
+        for key in palette_presets.PRESET_RAMP_DISPLAY_ORDER:
+            self.preset_swatches_combo.addItem(key, key)
+        self.preset_swatches_combo.setToolTip(
+            "Show colours from a named palette as clickable swatches (single-symbol layers)."
+        )
+        self.preset_swatches_combo.currentIndexChanged.connect(
+            self._on_preset_swatches_combo_changed
+        )
+        preset_sw_row.addWidget(self.preset_swatches_combo, stretch=1)
+        colour_layout.addLayout(preset_sw_row)
+        self._preset_swatch_host = QWidget()
+        self._preset_swatch_grid = QGridLayout(self._preset_swatch_host)
+        self._preset_swatch_grid.setContentsMargins(0, 0, 0, 0)
+        self._preset_swatch_grid.setSpacing(4)
+        colour_layout.addWidget(self._preset_swatch_host)
+
         # Saved colours: list of single-symbol colours saved via "Save current"; persists between sessions
         saved_colours_row = QHBoxLayout()
         self.saved_colours_combo = QComboBox()
@@ -779,35 +848,220 @@ class PaletteToolDialog(QDialog):
                 pass
         return ramp
 
+    def _swatch_source_ramp(self):
+        """Ramp shown on the preview button, else built-in combo + invert."""
+        try:
+            r = self.ramp_button.colorRamp()
+            if r is not None:
+                return r
+        except Exception:
+            pass
+        return self._current_effective_ramp()
+
+    @staticmethod
+    def _clear_swatch_grid(grid_layout):
+        while grid_layout.count():
+            item = grid_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _fill_swatch_grid(self, grid_layout, colors, max_cols=6):
+        self._clear_swatch_grid(grid_layout)
+        if not colors:
+            return
+        for i, c in enumerate(colors):
+            if not c.isValid():
+                continue
+            row, col = divmod(i, max_cols)
+            btn = QPushButton()
+            btn.setFixedSize(28, 28)
+            btn.setToolTip(c.name())
+            lum = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+            border = "#333" if lum > 160 else "#ccc"
+            btn.setStyleSheet(
+                f"background-color: {c.name()}; border: 1px solid {border}; "
+                "border-radius: 3px;"
+            )
+            qc = QColor(c)
+            btn.clicked.connect(partial(self._apply_single_symbol_color, qc))
+            grid_layout.addWidget(btn, row, col)
+
+    def _rebuild_ramp_derived_swatches(self):
+        if not hasattr(self, "_ramp_swatch_grid"):
+            return
+        layer = self.iface.activeLayer()
+        if (
+            not layer
+            or layer.type() != qt_compat.VectorLayerType
+            or not isinstance(layer.renderer(), QgsSingleSymbolRenderer)
+        ):
+            self._clear_swatch_grid(self._ramp_swatch_grid)
+            return
+        ramp = self._swatch_source_ramp()
+        colors = palette_presets.sample_ramp_colors(ramp, 12)
+        self._fill_swatch_grid(self._ramp_swatch_grid, colors)
+
+    def _rebuild_preset_palette_swatches(self):
+        if not hasattr(self, "_preset_swatch_grid"):
+            return
+        layer = self.iface.activeLayer()
+        if (
+            not layer
+            or layer.type() != qt_compat.VectorLayerType
+            or not isinstance(layer.renderer(), QgsSingleSymbolRenderer)
+        ):
+            self._clear_swatch_grid(self._preset_swatch_grid)
+            return
+        if self.preset_swatches_combo.currentIndex() <= 0:
+            self._clear_swatch_grid(self._preset_swatch_grid)
+            return
+        key = self.preset_swatches_combo.currentData()
+        colors = palette_presets.preset_qcolors(key)
+        self._fill_swatch_grid(self._preset_swatch_grid, colors)
+
+    def _on_preset_swatches_combo_changed(self, _index=None):
+        self._rebuild_preset_palette_swatches()
+
+    def _on_preset_ramp_for_classes_changed(self, _index=None):
+        if self._suppress_preset_ramp_apply:
+            return
+        if self.preset_ramp_for_classes_combo.currentIndex() <= 0:
+            return
+        key = self.preset_ramp_for_classes_combo.currentData()
+        colors = palette_presets.preset_qcolors(key)
+        ramp = palette_presets.gradient_ramp_from_qcolors(colors)
+        if ramp is None:
+            return
+        layer = self.iface.activeLayer()
+        if not layer or layer.type() != qt_compat.VectorLayerType:
+            return
+        r = layer.renderer()
+        if isinstance(r, QgsSingleSymbolRenderer):
+            btn_ramp = _clone_ramp(ramp)
+            if btn_ramp is None:
+                return
+            self._suppress_ramp_button_apply = True
+            try:
+                self.ramp_button.setColorRamp(btn_ramp)
+            except Exception:
+                pass
+            finally:
+                self._suppress_ramp_button_apply = False
+            self._rebuild_ramp_derived_swatches()
+            self.iface.messageBar().pushMessage(
+                "Palette Pilot",
+                f'Updated ramp preview for swatches ("{key}").',
+                level=qt_compat.MessageInfo,
+                duration=3,
+            )
+            return
+        ramp_apply = _clone_ramp(ramp)
+        if ramp_apply is None:
+            return
+        if apply_ramp_to_layer(layer, ramp_apply):
+            self._suppress_ramp_button_apply = True
+            try:
+                btn_ramp = _clone_ramp(ramp)
+                if btn_ramp is not None:
+                    self.ramp_button.setColorRamp(btn_ramp)
+            except Exception:
+                pass
+            finally:
+                self._suppress_ramp_button_apply = False
+            self._update_target_label()
+            try:
+                tree = self.iface.layerTreeView()
+                if tree is not None:
+                    tree.refreshLayerSymbology(layer.id())
+            except Exception:
+                pass
+            try:
+                layer.emitStyleChanged()
+            except Exception:
+                pass
+            self._rebuild_ramp_derived_swatches()
+            self.iface.messageBar().pushMessage(
+                "Palette Pilot",
+                f'Applied intent palette "{key}" as a gradient ramp.',
+                level=qt_compat.MessageInfo,
+                duration=3,
+            )
+
+    def _apply_single_symbol_color(self, color):
+        """Apply *color* to the active layer when it uses single-symbol renderer."""
+        if not color or not color.isValid():
+            return False
+        layer = self.iface.activeLayer()
+        if not layer or layer.type() != qt_compat.VectorLayerType:
+            return False
+        r = layer.renderer()
+        if not isinstance(r, QgsSingleSymbolRenderer):
+            return False
+        try:
+            self.colour_button.blockSignals(True)
+            try:
+                self.colour_button.setColor(color)
+            finally:
+                self.colour_button.blockSignals(False)
+            sym = r.symbol().clone()
+            sym.setColor(color)
+            r.setSymbol(sym)
+            layer.setRenderer(r)
+            layer.triggerRepaint()
+            try:
+                tree = self.iface.layerTreeView()
+                if tree is not None:
+                    tree.refreshLayerSymbology(layer.id())
+            except Exception:
+                pass
+            try:
+                layer.emitStyleChanged()
+            except Exception:
+                pass
+        except Exception:
+            return False
+        return True
+
     def _update_target_label(self):
         """Update the 'Target layer' label to the current active layer."""
         layer = self.iface.activeLayer()
         if not layer:
             self.target_label.setText("(No layer selected)")
             self._ramp_group.setEnabled(False)
+            self._ramp_group.setTitle(_RAMP_GROUP_TITLE_CLASSES)
+            self._ramp_group.setToolTip("")
             self._colour_group.setEnabled(False)
             self._full_style_group.setEnabled(False)
             self._last_layer_id = None
             self._last_renderer_single = False
             self._last_full_style_geom_type = None
+            self._rebuild_ramp_derived_swatches()
+            self._rebuild_preset_palette_swatches()
             return
         if layer.type() != qt_compat.VectorLayerType:
             self.target_label.setText(f"{layer.name()} (not vector)")
             self._ramp_group.setEnabled(False)
+            self._ramp_group.setTitle(_RAMP_GROUP_TITLE_CLASSES)
+            self._ramp_group.setToolTip("")
             self._colour_group.setEnabled(False)
             self._full_style_group.setEnabled(False)
             self._last_layer_id = layer.id()
             self._last_renderer_single = False
             self._last_full_style_geom_type = None
+            self._rebuild_ramp_derived_swatches()
+            self._rebuild_preset_palette_swatches()
             return
 
         # Vector layer: adjust UI based on renderer type
         self.target_label.setText(layer.name())
         r = layer.renderer()
         if isinstance(r, QgsSingleSymbolRenderer):
-            # Single symbol mode: enable colour picker and full style, disable ramp section
+            # Single symbol: colour section + ramp preview (ramp edits update swatches only)
             self._colour_group.setEnabled(True)
-            self._ramp_group.setEnabled(False)
+            self._ramp_group.setEnabled(True)
+            self._ramp_group.setTitle(_RAMP_GROUP_TITLE_PREVIEW)
+            self._ramp_group.setToolTip(_RAMP_GROUP_TIP_PREVIEW)
             self._full_style_group.setEnabled(True)
             # Only sync the colour button from the symbol when entering single mode
             # for this layer (avoid overwriting a colour the user has just picked
@@ -824,6 +1078,8 @@ class PaletteToolDialog(QDialog):
         else:
             # Non-single (graduated/categorized/etc.): use ramp section and full style, disable single-colour picker
             self._ramp_group.setEnabled(True)
+            self._ramp_group.setTitle(_RAMP_GROUP_TITLE_CLASSES)
+            self._ramp_group.setToolTip(_RAMP_GROUP_TIP_CLASSES)
             self._colour_group.setEnabled(False)
             self._full_style_group.setEnabled(True)
             self._last_renderer_single = False
@@ -837,6 +1093,9 @@ class PaletteToolDialog(QDialog):
             self._populate_full_styles()
             self._suppress_full_style_apply = False
 
+        self._rebuild_ramp_derived_swatches()
+        self._rebuild_preset_palette_swatches()
+
     def _on_ramp_changed(self):
         ramp = self._current_effective_ramp()
         # Keep ramp button in sync with combo (avoid feedback when we apply from button)
@@ -848,34 +1107,36 @@ class PaletteToolDialog(QDialog):
             pass
         finally:
             self._suppress_ramp_button_apply = False
-        # Auto-apply ramps for graduated/categorized layers when the user
-        # cycles ramps, but skip during initialisation or when suppressed.
-        if self._suppress_ramp_auto_apply:
-            return
-        layer = self.iface.activeLayer()
-        if not layer or layer.type() != qt_compat.VectorLayerType:
-            return
-        # Do not auto-apply for single-symbol layers (they use the colour picker)
-        r = layer.renderer()
-        if isinstance(r, QgsSingleSymbolRenderer):
-            return
-        ramp_to_apply = ramp
-        if not ramp_to_apply:
-            return
-        from .palette_pilot import apply_ramp_to_layer
+        try:
+            # Auto-apply ramps for graduated/categorized layers when the user
+            # cycles ramps, but skip during initialisation or when suppressed.
+            if self._suppress_ramp_auto_apply:
+                return
+            layer = self.iface.activeLayer()
+            if not layer or layer.type() != qt_compat.VectorLayerType:
+                return
+            # Do not auto-apply for single-symbol layers (they use the colour picker)
+            r = layer.renderer()
+            if isinstance(r, QgsSingleSymbolRenderer):
+                return
+            ramp_to_apply = ramp
+            if not ramp_to_apply:
+                return
 
-        if apply_ramp_to_layer(layer, ramp_to_apply):
-            self._update_target_label()
-            try:
-                tree = self.iface.layerTreeView()
-                if tree is not None:
-                    tree.refreshLayerSymbology(layer.id())
-            except Exception:
-                pass
-            try:
-                layer.emitStyleChanged()
-            except Exception:
-                pass
+            if apply_ramp_to_layer(layer, ramp_to_apply):
+                self._update_target_label()
+                try:
+                    tree = self.iface.layerTreeView()
+                    if tree is not None:
+                        tree.refreshLayerSymbology(layer.id())
+                except Exception:
+                    pass
+                try:
+                    layer.emitStyleChanged()
+                except Exception:
+                    pass
+        finally:
+            self._rebuild_ramp_derived_swatches()
 
     def _on_saved_style_changed(self):
         """Apply the selected saved style ramp to the active layer (live apply)."""
@@ -894,8 +1155,18 @@ class PaletteToolDialog(QDialog):
             return
         r = layer.renderer()
         if isinstance(r, QgsSingleSymbolRenderer):
+            cr = _clone_ramp(ramp)
+            if cr is None:
+                return
+            self._suppress_ramp_button_apply = True
+            try:
+                self.ramp_button.setColorRamp(cr)
+            except Exception:
+                pass
+            finally:
+                self._suppress_ramp_button_apply = False
+            self._rebuild_ramp_derived_swatches()
             return
-        from .palette_pilot import apply_ramp_to_layer
 
         if apply_ramp_to_layer(layer, ramp):
             self._update_target_label()
@@ -1061,31 +1332,33 @@ class PaletteToolDialog(QDialog):
         if self._suppress_ramp_button_apply:
             return
         try:
-            ramp = self.ramp_button.colorRamp()
-        except Exception:
-            return
-        if ramp is None:
-            return
-        layer = self.iface.activeLayer()
-        if not layer or layer.type() != qt_compat.VectorLayerType:
-            return
-        r = layer.renderer()
-        if isinstance(r, QgsSingleSymbolRenderer):
-            return
-        from .palette_pilot import apply_ramp_to_layer
+            try:
+                ramp = self.ramp_button.colorRamp()
+            except Exception:
+                return
+            if ramp is None:
+                return
+            layer = self.iface.activeLayer()
+            if not layer or layer.type() != qt_compat.VectorLayerType:
+                return
+            r = layer.renderer()
+            if isinstance(r, QgsSingleSymbolRenderer):
+                return
 
-        if apply_ramp_to_layer(layer, ramp):
-            self._update_target_label()
-            try:
-                tree = self.iface.layerTreeView()
-                if tree is not None:
-                    tree.refreshLayerSymbology(layer.id())
-            except Exception:
-                pass
-            try:
-                layer.emitStyleChanged()
-            except Exception:
-                pass
+            if apply_ramp_to_layer(layer, ramp):
+                self._update_target_label()
+                try:
+                    tree = self.iface.layerTreeView()
+                    if tree is not None:
+                        tree.refreshLayerSymbology(layer.id())
+                except Exception:
+                    pass
+                try:
+                    layer.emitStyleChanged()
+                except Exception:
+                    pass
+        finally:
+            self._rebuild_ramp_derived_swatches()
 
     def _on_saved_colour_changed(self):
         """Apply the selected saved colour to the active layer (live apply)."""
@@ -1101,31 +1374,7 @@ class PaletteToolDialog(QDialog):
         color = QColor(hex_str)
         if not color.isValid():
             return
-        layer = self.iface.activeLayer()
-        if not layer or layer.type() != qt_compat.VectorLayerType:
-            return
-        r = layer.renderer()
-        if not isinstance(r, QgsSingleSymbolRenderer):
-            return
-        try:
-            self.colour_button.setColor(color)
-            sym = r.symbol().clone()
-            sym.setColor(color)
-            r.setSymbol(sym)
-            layer.setRenderer(r)
-            layer.triggerRepaint()
-            try:
-                tree = self.iface.layerTreeView()
-                if tree is not None:
-                    tree.refreshLayerSymbology(layer.id())
-            except Exception:
-                pass
-            try:
-                layer.emitStyleChanged()
-            except Exception:
-                pass
-        except Exception:
-            pass
+        self._apply_single_symbol_color(color)
 
     def _on_save_current_colour_as(self):
         """Save the current single-symbol colour to the plugin's saved colours list."""
@@ -1367,39 +1616,21 @@ class PaletteToolDialog(QDialog):
         layer = self.iface.activeLayer()
         if not layer or layer.type() != qt_compat.VectorLayerType:
             return
-        r = layer.renderer()
-        if not isinstance(r, QgsSingleSymbolRenderer):
+        if not isinstance(layer.renderer(), QgsSingleSymbolRenderer):
             return
-        try:
-            sym = r.symbol().clone()
-            sym.setColor(color)
-            r.setSymbol(sym)
-            layer.setRenderer(r)
-            layer.triggerRepaint()
-            try:
-                tree = self.iface.layerTreeView()
-                if tree is not None:
-                    tree.refreshLayerSymbology(layer.id())
-            except Exception:
-                pass
-            try:
-                layer.emitStyleChanged()
-            except Exception:
-                pass
-            self.iface.messageBar().pushMessage(
-                "Palette Pilot",
-                f'Applied single symbol colour to "{layer.name()}".',
-                level=qt_compat.MessageInfo,
-                duration=3,
-            )
-            QgsMessageLog.logMessage(
-                f'Applied single symbol colour to "{layer.name()}".',
-                "Palette Pilot",
-                qt_compat.MessageInfo,
-            )
-        except Exception:
-            # Fall back silently; user can still click Apply if needed
+        if not self._apply_single_symbol_color(color):
             return
+        self.iface.messageBar().pushMessage(
+            "Palette Pilot",
+            f'Applied single symbol colour to "{layer.name()}".',
+            level=qt_compat.MessageInfo,
+            duration=3,
+        )
+        QgsMessageLog.logMessage(
+            f'Applied single symbol colour to "{layer.name()}".',
+            "Palette Pilot",
+            qt_compat.MessageInfo,
+        )
 
     def _on_apply(self):
         # --- Themes tab: apply theme to project ---
