@@ -14,6 +14,8 @@ See [PLAN.md](../PLAN.md) for full context. This document summarises the archite
 - **Qt5/Qt6 and QGIS 3/4 compatibility:** The plugin uses a `qt_compat` shim module (`palette_pilot/qt_compat.py`) that resolves enum constants at import time for both Qt5 (unscoped enums like `Qt.NoFocus`) and Qt6 (scoped enums like `Qt.FocusPolicy.NoFocus`), as well as QGIS 3 APIs (`QgsWkbTypes`, `Qgis.Info`, `QgsMapLayer.VectorLayer`) and their QGIS 4 equivalents (`Qgis.GeometryType`, `Qgis.MessageLevel`, `Qgis.LayerType`). Plugin code imports constants from `qt_compat` instead of using Qt/QGIS enums directly, avoiding scattered `try/except` blocks.
 - **Scope of logic:** Palette “application” is a thin adapter: map user choice (ramp or colour list) onto existing graduated/categorized renderer structures. Classification method and class breaks are left to QGIS; the plugin only changes colours.
 
+- **Home tab palette UX:** Named intent palettes and swatch helpers live in `palette_pilot/palette_presets.py` (hex lists, sampling a ramp for display, building a `QgsGradientColorRamp`). On the Home tab, **Intent palette** builds a gradient from a preset and applies it to **graduated/categorized** layers; on **single-symbol** layers it only updates the ramp preview (the group title switches to “preview for swatches”) so users can still edit the ramp that drives **quick swatches**. **Preset swatches** show colours from a chosen named palette; **quick swatches from ramp** sample the current ramp preview. Single-symbol colour apply reuses the existing colour-button path.
+
 ## Strengths
 
 - **Simple deployment:** No server, no extra runtime; users install QGIS and the plugin. Updates are a matter of updating the plugin in the plugin directory or via Plugin Manager.
@@ -36,7 +38,7 @@ See [PLAN.md](../PLAN.md) for full context. This document summarises the archite
 
 ## Future recommendations
 
-The list below is ordered for development: **lower effort and localized changes first**, then **theme-editor improvements in a sensible sequence** (behaviour before heavy layout restructuring), then **Home tab palette UX**, and finally **deeper symbology controls** that touch many renderer and symbol code paths.
+The list below is ordered for development: **lower effort and localized changes first**, then **theme-editor improvements in a sensible sequence** (behaviour before heavy layout restructuring), then **deeper symbology controls** that touch many renderer and symbol code paths. **Home tab palette UX** (items 6–7 below) is implemented; see “Home tab palette UX” under considerations.
 
 1. **Support rule reordering** — *Assessment: low effort, high leverage.* Precedence is already defined by rule order; exposing up/down (or drag) in `ThemeEditorDialog` only reorders the in-memory list before save, with no schema migration. Do this first so users can fix overlaps without delete-and-recreate.
 
@@ -48,8 +50,8 @@ The list below is ordered for development: **lower effort and localized changes 
 
 5. **Delete user-created ramps and themes** — *Assessment: low effort for ramps; theme file deletion is already implemented in the Theme tab.* Remaining work is chiefly removing user-saved colour ramps from `QgsStyle` and pruning the plugin’s saved-name list in `QSettings`, plus confirmation and any polish for “in use” cases. Goal: users can drop obsolete ramps and themes without manual profile edits, with clear behaviour when a definition is still referenced.
 
-6. **Quick colour palette for single symbol layers** — *Assessment: medium effort.* Add a swatch grid on the Home tab wired to the existing single-symbol colour apply path; generate swatches from the current ramp or small fixed preset lists. Independent of the theme editor cluster.
+6. **Quick colour palette for single symbol layers** — **Done.** Home tab: quick swatches (sampled from ramp preview) and preset swatches (named palettes), applied via the single-symbol colour path.
 
-7. **Expand palette controls from the Home tab** — *Assessment: medium–high effort.* Broader preset or generated ramp families (pastel, neon, greyscale, high-contrast, etc.) and integration with ramp selection/apply. Fits after quick swatches if you want to reuse preset colour logic. Deliver generation and quick selection of intent-driven palettes so users need not build every ramp by hand.
+7. **Expand palette controls from the Home tab** — **Done.** Intent palette combo, preset integration with ramp apply for classed layers and ramp-preview updates for single-symbol layers; see `palette_presets.py`.
 
 8. **Improve styling quality-of-life controls** — *Assessment: high effort.* Line colour, line weight, and separate fill/line transparency require navigating `QgsSymbol` / sub-symbols across single, graduated, and categorized renderers, with many edge cases. Defer until core palette and theme flows are stable. Scope: line colour and weight plus separate fill/line alpha for faster cartographic tuning.

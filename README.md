@@ -29,7 +29,7 @@ Changing layer colours in QGIS usually means opening **Layer Properties → Symb
 
 **Supported layer types:**
 
-- **Single symbol** — One colour for the whole layer. Open Palette Pilot, pick a colour (or a saved colour), and apply. Ideal for boundaries, background layers, or any layer that uses a single symbol.
+- **Single symbol** — One colour for the whole layer. Open Palette Pilot, pick a colour (or a saved colour), and apply. Use **quick swatches** (colours sampled from the ramp preview) and **preset swatches** (named palettes such as Pastel or High contrast). While the layer stays single-symbol, the ramp block acts as a **preview only** so you can change which ramp feeds those swatches; **Intent palette** and **Saved styles** update that preview without switching renderer type.
 - **Graduated** — Colours by a numeric field (e.g. population, elevation). The **field to classify on must already be set** in Layer Properties → Symbology (e.g. “Value” = your numeric field). Palette Pilot then applies a colour ramp to those classes without you re-opening Symbology.
 - **Categorized** — Colours by a category field (e.g. type, region). The **field to classify on must already be set** in Layer Properties → Symbology (e.g. “Value” = your category field). Palette Pilot applies a ramp across the categories.
 - **Themes (full style rules)** — Save a theme made of ordered rules that match layer names (regex) and apply `.qml` styles by geometry type. Use this to quickly re-apply a consistent full-style setup across projects.
