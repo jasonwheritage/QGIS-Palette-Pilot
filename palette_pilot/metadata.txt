@@ -1,6 +1,6 @@
 [general]
 name=Palette Pilot
-email=42364494+jasonwheritage@users.noreply.github.com
+email=jasonwheritage+git@gmail.com
 author=Jason Heritage & Cursor
 qgisMinimumVersion=3.28
 qgisMaximumVersion=3.99
