@@ -1013,8 +1013,8 @@ class PaletteToolDialog(QDialog):
                 sym.setColor(color)
                 r.setSymbol(sym)
             elif isinstance(r, QgsCategorizedSymbolRenderer):
-                for idx in range(r.categoryCount()):
-                    cat = r.categories()[idx]
+                categories = r.categories()
+                for idx, cat in enumerate(categories):
                     sym = cat.symbol().clone()
                     sym.setColor(color)
                     r.updateCategorySymbol(idx, sym)
