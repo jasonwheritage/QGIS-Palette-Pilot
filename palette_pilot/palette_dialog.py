@@ -33,6 +33,8 @@ from qgis.core import (
     QgsSettings,
     QgsMessageLog,
     QgsSingleSymbolRenderer,
+    QgsGraduatedSymbolRenderer,
+    QgsCategorizedSymbolRenderer,
     QgsApplication,
     QgsProject,
 )
@@ -434,12 +436,12 @@ class PaletteToolDialog(QDialog):
 
         home_layout.addWidget(ramp_group)
 
-        # Single symbol colour (only meaningful when renderer is single symbol)
-        colour_group = QGroupBox("Single symbol colour")
+        # Colour picker — available for all renderer types
+        colour_group = QGroupBox("Colour picker")
         colour_layout = QVBoxLayout(colour_group)
         self.colour_button = QgsColorButton()
         self.colour_button.setText("Pick colour…")
-        # Auto-apply new colour to single-symbol layers when the user confirms a pick
+        # Auto-apply new colour when the user confirms a pick
         self.colour_button.colorChanged.connect(self._on_single_colour_changed)
         colour_layout.addWidget(self.colour_button)
 
@@ -461,7 +463,7 @@ class PaletteToolDialog(QDialog):
         for key in palette_presets.PRESET_RAMP_DISPLAY_ORDER:
             self.preset_swatches_combo.addItem(key, key)
         self.preset_swatches_combo.setToolTip(
-            "Show colours from a named palette as clickable swatches (single-symbol layers)."
+            "Show colours from a named palette as clickable swatches."
         )
         self.preset_swatches_combo.currentIndexChanged.connect(
             self._on_preset_swatches_combo_changed
@@ -894,7 +896,6 @@ class PaletteToolDialog(QDialog):
         if (
             not layer
             or layer.type() != qt_compat.VectorLayerType
-            or not isinstance(layer.renderer(), QgsSingleSymbolRenderer)
         ):
             self._clear_swatch_grid(self._ramp_swatch_grid)
             return
@@ -909,7 +910,6 @@ class PaletteToolDialog(QDialog):
         if (
             not layer
             or layer.type() != qt_compat.VectorLayerType
-            or not isinstance(layer.renderer(), QgsSingleSymbolRenderer)
         ):
             self._clear_swatch_grid(self._preset_swatch_grid)
             return
@@ -989,24 +989,43 @@ class PaletteToolDialog(QDialog):
             )
 
     def _apply_single_symbol_color(self, color):
-        """Apply *color* to the active layer when it uses single-symbol renderer."""
+        """Apply *color* to the active layer's renderer.
+
+        For single-symbol layers the colour replaces the symbol colour directly.
+        For graduated / categorized layers the colour is applied to every
+        category or class symbol so the whole layer becomes a uniform colour.
+        """
         if not color or not color.isValid():
             return False
         layer = self.iface.activeLayer()
         if not layer or layer.type() != qt_compat.VectorLayerType:
             return False
         r = layer.renderer()
-        if not isinstance(r, QgsSingleSymbolRenderer):
-            return False
         try:
             self.colour_button.blockSignals(True)
             try:
                 self.colour_button.setColor(color)
             finally:
                 self.colour_button.blockSignals(False)
-            sym = r.symbol().clone()
-            sym.setColor(color)
-            r.setSymbol(sym)
+
+            if isinstance(r, QgsSingleSymbolRenderer):
+                sym = r.symbol().clone()
+                sym.setColor(color)
+                r.setSymbol(sym)
+            elif isinstance(r, QgsCategorizedSymbolRenderer):
+                categories = r.categories()
+                for idx, cat in enumerate(categories):
+                    sym = cat.symbol().clone()
+                    sym.setColor(color)
+                    r.updateCategorySymbol(idx, sym)
+            elif isinstance(r, QgsGraduatedSymbolRenderer):
+                for idx, rng in enumerate(r.ranges()):
+                    sym = rng.symbol().clone()
+                    sym.setColor(color)
+                    r.updateRangeSymbol(idx, sym)
+            else:
+                return False
+
             layer.setRenderer(r)
             layer.triggerRepaint()
             try:
@@ -1076,11 +1095,11 @@ class PaletteToolDialog(QDialog):
             self._last_renderer_single = True
             self._last_layer_id = layer.id()
         else:
-            # Non-single (graduated/categorized/etc.): use ramp section and full style, disable single-colour picker
+            # Non-single (graduated/categorized/etc.): enable ramp, colour picker, and full style
             self._ramp_group.setEnabled(True)
             self._ramp_group.setTitle(_RAMP_GROUP_TITLE_CLASSES)
             self._ramp_group.setToolTip(_RAMP_GROUP_TIP_CLASSES)
-            self._colour_group.setEnabled(False)
+            self._colour_group.setEnabled(True)
             self._full_style_group.setEnabled(True)
             self._last_renderer_single = False
             self._last_layer_id = layer.id()
@@ -1610,24 +1629,22 @@ class PaletteToolDialog(QDialog):
 
     def _on_single_colour_changed(self, color):
         """
-        Auto-apply single-symbol colour when the user confirms a pick in the colour dialog.
-        This avoids needing a second Enter/Apply after closing the picker.
+        Auto-apply colour when the user confirms a pick in the colour dialog.
+        Works for single-symbol, graduated, and categorized renderers.
         """
         layer = self.iface.activeLayer()
         if not layer or layer.type() != qt_compat.VectorLayerType:
-            return
-        if not isinstance(layer.renderer(), QgsSingleSymbolRenderer):
             return
         if not self._apply_single_symbol_color(color):
             return
         self.iface.messageBar().pushMessage(
             "Palette Pilot",
-            f'Applied single symbol colour to "{layer.name()}".',
+            f'Applied colour to "{layer.name()}".',
             level=qt_compat.MessageInfo,
             duration=3,
         )
         QgsMessageLog.logMessage(
-            f'Applied single symbol colour to "{layer.name()}".',
+            f'Applied colour to "{layer.name()}".',
             "Palette Pilot",
             qt_compat.MessageInfo,
         )
