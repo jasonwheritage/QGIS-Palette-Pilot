@@ -141,6 +141,28 @@ def save_theme(name, rules):
     return path
 
 
+def duplicate_theme(name, new_name):
+    """
+    Duplicate theme *name* as *new_name*.  Returns the path of the new file,
+    or ``None`` if the source theme could not be loaded.
+    """
+    data = load_theme(name)
+    if data is None:
+        return None
+    return save_theme(new_name, data.get("rules", []))
+
+
+def theme_file_path(name):
+    """Return the absolute path to the JSON file for *name* (may not exist)."""
+    safe = _re.sub(r'[<>:"/\\|?*]', "_", name.strip())[:200] or "theme"
+    return os.path.join(_themes_directory(), safe + ".json")
+
+
+def themes_directory():
+    """Return the themes directory path (public accessor)."""
+    return _themes_directory()
+
+
 def delete_theme(name):
     """Delete the JSON file for *name*.  Silently succeeds if missing."""
     safe = _re.sub(r'[<>:"/\\|?*]', "_", name.strip())[:200] or "theme"

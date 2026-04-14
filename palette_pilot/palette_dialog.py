@@ -570,9 +570,15 @@ class PaletteToolDialog(QDialog):
         self.edit_theme_btn = QPushButton("Edit…")
         self.edit_theme_btn.clicked.connect(self._on_edit_theme)
         mgmt_row.addWidget(self.edit_theme_btn)
+        self.duplicate_theme_btn = QPushButton("Duplicate…")
+        self.duplicate_theme_btn.clicked.connect(self._on_duplicate_theme)
+        mgmt_row.addWidget(self.duplicate_theme_btn)
         self.delete_theme_btn = QPushButton("Delete")
         self.delete_theme_btn.clicked.connect(self._on_delete_theme)
         mgmt_row.addWidget(self.delete_theme_btn)
+        self.open_theme_location_btn = QPushButton("Open Location")
+        self.open_theme_location_btn.clicked.connect(self._on_open_theme_location)
+        mgmt_row.addWidget(self.open_theme_location_btn)
         mgmt_row.addStretch()
         theme_select_layout.addLayout(mgmt_row)
 
@@ -633,7 +639,9 @@ class PaletteToolDialog(QDialog):
             and self.theme_combo.currentText().strip() != "—"
         )
         self.edit_theme_btn.setEnabled(has_theme)
+        self.duplicate_theme_btn.setEnabled(has_theme)
         self.delete_theme_btn.setEnabled(has_theme)
+        self.open_theme_location_btn.setEnabled(has_theme)
         if not enabled:
             self.theme_status_label.setText("Themes disabled.")
         elif self._theme_active_name:
@@ -721,6 +729,55 @@ class PaletteToolDialog(QDialog):
                 self._theme_active_name = new_name
                 _set_last_theme(new_name)
             self._update_theme_ui_state()
+
+    def _on_duplicate_theme(self):
+        """Duplicate the currently selected theme under a new name."""
+        name = self.theme_combo.currentText().strip()
+        if not name or name == "—":
+            return
+        new_name, ok = QInputDialog.getText(
+            self, "Palette Pilot",
+            "Name for the duplicate theme:",
+            text=f"{name} (copy)",
+        )
+        if not ok or not new_name.strip():
+            return
+        new_name = new_name.strip()
+        if new_name in self._available_themes():
+            QMessageBox.warning(
+                self, "Palette Pilot",
+                f'A theme named "{new_name}" already exists.',
+            )
+            return
+        result = theme_engine.duplicate_theme(name, new_name)
+        if result is None:
+            QMessageBox.warning(
+                self, "Palette Pilot",
+                f'Could not duplicate theme "{name}".',
+            )
+            return
+        self._populate_themes()
+        idx = self.theme_combo.findText(new_name)
+        if idx >= 0:
+            self.theme_combo.setCurrentIndex(idx)
+        self._update_theme_ui_state()
+        self.iface.messageBar().pushMessage(
+            "Palette Pilot",
+            f'Duplicated "{name}" as "{new_name}".',
+            level=qt_compat.MessageInfo,
+            duration=3,
+        )
+
+    def _on_open_theme_location(self):
+        """Open the file manager at the selected theme's JSON file location."""
+        name = self.theme_combo.currentText().strip()
+        if not name or name == "—":
+            return
+        path = theme_engine.theme_file_path(name)
+        if os.path.isfile(path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(theme_engine.themes_directory()))
 
     def _on_delete_theme(self):
         """Delete the currently selected theme."""
